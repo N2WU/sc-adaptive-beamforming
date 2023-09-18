@@ -228,9 +228,16 @@ class bf_multichannel():
                     self.MSE_SNR[i_snr, i_sim] = mse
                     self.ERR_SNR[i_snr, i_sim] = n_err
 
+                # now transmit based on theta
+                theta = theta_m[0] 
+                A = np.exp(-1j*2*np.pi*np.sind(theta).T *self.d0*np.arange(0,self.M-1)).T 
+                # data portion -> received signal? or just fabricate
+                F = v_rls # ?
+                X = A*F
+                # transmit(X)
+
         self.mean_mse = np.mean(self.MSE_SNR, axis=1)
         self.mean_err = np.mean(self.ERR_SNR, axis=1)
-
 
     def processing(self, v_rls, d, K=1, bf=True):
         channel_list = {1:[0], 2:[0,11], 3:[0,6,11], 4:[0,4,7,11], 8:[0,1,3,4,6,7,9,11], 6:[0,2,4,6,8,10]}
