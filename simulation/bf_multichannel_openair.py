@@ -15,7 +15,7 @@ class bf_multichannel():
     R = 3000
     Ns = 4
     channels = 16
-    M = 12  # the channels to be use
+
     d0 = 0.05
     c = 343
     n_path = 1
@@ -23,6 +23,10 @@ class bf_multichannel():
     feedforward_taps = 30
     feedbackward_taps = 2
     alpha_rls = 0.9999
+
+    bs_channels = list(range(1, 11))
+    M = len(bs_channels)  # the channels to be use
+    user_channels = [17]
 
     theta_start = -90
     theta_end = 90
@@ -61,6 +65,7 @@ class bf_multichannel():
 
         self.s = np.real(self.preamble_rc * np.exp(2 * np.pi * 1j * self.fc * np.arange(len(self.preamble_rc))/self.Fs))
         self.s /= self.s.max()
+
         pass
 
     # functions for preamble generation
@@ -129,18 +134,24 @@ class bf_multichannel():
             SNR = np.power(10, snr/10)
             print(f"SNR={snr}dB")
             for i_sim in tqdm(range(self.n_sim)):
-                r_multichannel = np.random.randn(self.duration * self.Fs, self.channels) / SNR
-                # receive the signal
-                for i in range(self.n_path):
-                    x_tx, y_tx = self.x_tx_list[i], self.y_tx_list[i]
-                    reflection = self.reflection_list[i]
-                    dx, dy = x_rx - x_tx, y_rx - y_tx
-                    d_rx_tx = np.sqrt(dx**2 + dy**2)
-                    delta_tau = d_rx_tx / self.c
-                    delay = np.round(delta_tau * self.Fs).astype(int)
-                    for j, delay_j in enumerate(delay):
-                        # print(delay_j/4)
-                        r_multichannel[delay_j:delay_j+len(self.s), j] += reflection * self.s
+                # what does multichannel do?
+                # so in actuality r_multichannel is acheived through
+                # r_multichannel = np.random.randn(self.duration * self.Fs, self.channels) / SNR
+                # from user to basestation, input should be user and output should be bs?
+                r_multichannel = sd.playrec(SNR*0.1*self.s, samplerate=self.fs, channels=len(self.user_channels), input_mapping=self.bs_channels, output_mapping=self.user_channels, blocking=True)
+                # sd.playrec(SNR*0.1*self.s, samplerate=self.fs, blocking=True, channels=self.M)
+                # playrec is being used here but it isn't the desired scenario. UEs should transmit (?) then be received by array
+            #    # receive the signal
+            #    for i in range(self.n_path):
+            #        x_tx, y_tx = self.x_tx_list[i], self.y_tx_list[i]
+            #        reflection = self.reflection_list[i]
+            #        dx, dy = x_rx - x_tx, y_rx - y_tx
+            #        d_rx_tx = np.sqrt(dx**2 + dy**2)
+            #        delta_tau = d_rx_tx / self.c
+            #        delay = np.round(delta_tau * self.Fs).astype(int)
+            #        for j, delay_j in enumerate(delay):
+            #            # print(delay_j/4)
+            #            r_multichannel[delay_j:delay_j+len(self.s), j] += reflection * self.s
 
                 # get S(theta) -- the angle of the source
                 r = r_multichannel[:,:self.M]
@@ -148,6 +159,7 @@ class bf_multichannel():
                 freqs = np.fft.fftfreq(len(r[:, 0]), 1/self.Fs)
 
                 index = np.where((freqs >= self.fc-self.R/2) & (freqs < self.fc+self.R/2))[0]
+                # identifies start index?
                 N = len(index)
                 fk = freqs[index]       
                 yk = r_fft[index, :]    # N*M
@@ -233,8 +245,9 @@ class bf_multichannel():
                 theta = theta_m[0] 
                 A = np.exp(-1j*2*np.pi*np.sind(theta).T *self.d0*np.arange(0,self.M-1)).T 
                 # data portion -> received signal? or just fabricate
-                F = v_rls # ?
+                F = self.s # ?
                 X = A*F
+                sd.playrec(SNR*0.1*self.s, samplerate=self.fs, channels=len(self.bs_channels), input_mapping=self.user_channels, output_mapping=self.bs_channels, blocking=True)
                 # transmit(X)
 
         self.mean_mse = np.mean(self.MSE_SNR, axis=1)
