@@ -32,10 +32,10 @@ class tx_gnb_sim():
     y_rx_list = np.array([1, 1])
     n_UE = len(x_rx_list)
 
-    snr_list = np.arange(0, 15, 1)
+    snr_list = np.arange(0, 5, 1) #changed from 15
 
-    mean_mse = np.zeros(n_UE)
-    mean_err = np.zeros(n_UE)
+    mean_mse = np.zeros((len(snr_list),n_UE))
+    mean_err = np.zeros_like(mean_mse)
 
     def __init__(self, fc, n_path, n_sim, theta) -> None:
         self.fc = fc
@@ -66,7 +66,10 @@ class tx_gnb_sim():
 
         self.s = np.real(self.preamble_rc * np.exp(2 * np.pi * 1j * self.fc * np.arange(len(self.preamble_rc))/self.Fs))
         self.steering_vec = self.calc_steering_vec(theta)
-        self.s = self.steering_vec * self.s
+        #self.steering_vec = self.steering_vec * np.ones((len(self.steering_vec,1)))
+        # stupid math
+        #self.s = self.s * np.ones((1,len(self.s)))
+        self.s = np.dot(np.reshape(self.steering_vec,[-1,1]),np.reshape(self.s,[1,-1]))
         self.s /= self.s.max()
         pass
 
@@ -130,7 +133,7 @@ class tx_gnb_sim():
         return time_idx, h_rrc
     
     def calc_steering_vec(self, theta):
-        steering_vec = (np.exp(-1j*2*np.pi*np.sin(theta)).T * self.d0 * np.arange(self.gnb_M)).T # double check this
+        steering_vec = self.d0*(np.exp(-1j*2*np.pi*np.sin(theta)))*np.arange(self.gnb_M) # double check this
         return steering_vec
 
     def simulation(self):
@@ -248,8 +251,8 @@ class tx_gnb_sim():
                         self.MSE_SNR[i_snr, i_sim] = mse
                         self.ERR_SNR[i_snr, i_sim] = n_err
 
-            self.mean_mse[i_UE] = np.mean(self.MSE_SNR, axis=1)
-            self.mean_err[i_UE] = np.mean(self.ERR_SNR, axis=1)
+                self.mean_mse[i_snr,i_UE] = np.mean(self.MSE_SNR, axis=1)
+                self.mean_err[i_snr,i_UE] = np.mean(self.ERR_SNR, axis=1)
 
     def processing(self, v_rls, d, K=1, bf=False):
         channel_list = {1:[0], 2:[0,11], 3:[0,6,11], 4:[0,4,7,11], 8:[0,1,3,4,6,7,9,11], 6:[0,2,4,6,8,10]} #assuming these are pilot tones?
