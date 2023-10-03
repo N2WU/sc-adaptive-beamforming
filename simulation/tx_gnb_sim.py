@@ -1,3 +1,4 @@
+# Takes BF inputs and simulates gnB transmission (n-element array) to UEs (single-element array(s)).
 import numpy as np
 import scipy.signal as sg
 from commpy.modulation import QAMModem
@@ -5,8 +6,7 @@ import matplotlib.pyplot as plt
 import sounddevice as sd
 from tqdm import tqdm
 
-class bf_multichannel():
-
+class tx_gnb_sim():
     fc = 6.5e3
     M0 = 16
     duration = 5
@@ -14,8 +14,8 @@ class bf_multichannel():
     n_repeat = 20
     R = 3000
     Ns = 4
-    channels = 16
-    M = 12  # the channels to be use
+    gnb_channels = 16
+    gnb_M = 12  # the channels to be use
     d0 = 0.05
     c = 343
     n_path = 1
@@ -24,20 +24,24 @@ class bf_multichannel():
     feedbackward_taps = 2
     alpha_rls = 0.9999
 
-    theta_start = -90
-    theta_end = 90
-
     reflection_list = np.array([1])
-    x_tx_list = np.array([0])
-    y_tx_list = np.array([1])
+    x_tx_list = np.arange(0, d0*gnb_channels, d0)
+    y_tx_list = np.zeros_like(x_tx_list) # taken from bf_multi's x_rx and y_rx 
+
+    x_rx_list = np.array([0, 1]) # coordinates for UEs
+    y_rx_list = np.array([1, 1])
+    n_UE = len(x_rx_list)
 
     snr_list = np.arange(0, 15, 1)
 
-    def __init__(self, fc, n_path, n_sim, n_UE) -> None:
+    mean_mse = np.zeros(n_UE)
+    mean_err = np.zeros(n_UE)
+
+    def __init__(self, fc, n_path, n_sim, theta) -> None:
         self.fc = fc
         self.n_path = n_path
         self.n_sim = n_sim
-        self.n_UE = n_UE
+        self.theta = theta
 
         self.MSE_SNR = np.zeros((len(self.snr_list), n_sim))
         self.ERR_SNR = np.zeros_like(self.MSE_SNR)
@@ -61,6 +65,8 @@ class bf_multichannel():
         self.preamble_xcorr = sg.convolve(self.upsample(self.preamble, self.nsps), self.rc_tx, mode="same")
 
         self.s = np.real(self.preamble_rc * np.exp(2 * np.pi * 1j * self.fc * np.arange(len(self.preamble_rc))/self.Fs))
+        self.steering_vec = self.calc_steering_vec(theta)
+        self.s = self.steering_vec * self.s
         self.s /= self.s.max()
         pass
 
@@ -122,128 +128,131 @@ class bf_multichannel():
                 ) / (np.pi * t * (1 - (4 * alpha * t / Ts) * (4 * alpha * t / Ts)) / Ts)
 
         return time_idx, h_rrc
+    
+    def calc_steering_vec(self, theta):
+        steering_vec = (np.exp(-1j*2*np.pi*np.sin(theta)).T * self.d0 * np.arange(self.gnb_M)).T # double check this
+        return steering_vec
 
     def simulation(self):
-        x_rx = np.arange(0, self.d0*self.channels, self.d0)
-        y_rx = np.zeros_like(x_rx)
-        for i_snr, snr in enumerate(self.snr_list):
-            SNR = np.power(10, snr/10)
-            print(f"SNR={snr}dB")
-            for i_sim in tqdm(range(self.n_sim)):
-                r_multichannel = np.random.randn(self.duration * self.Fs, self.channels) / SNR
-                # receive the signal
-                for i in range(self.n_path):
-                    x_tx, y_tx = self.x_tx_list[i], self.y_tx_list[i]
-                    reflection = self.reflection_list[i]
+        # x_rx = np.arange(0, self.d0*self.channels, self.d0) # should be more straightforward than this
+        # but also different since each UE RX are independently formed 
+        for i_UE in range(self.n_UE):
+            x_rx = self.x_rx_list[i_UE] # this is assigning its position
+            y_rx = self.y_rx_list[i_UE]
+            for i_snr, snr in enumerate(self.snr_list):
+                SNR = np.power(10, snr/10)
+                print(f"SNR={snr}dB")
+                for i_sim in tqdm(range(self.n_sim)):
+                    # r_multichannel = np.random.randn(self.duration * self.Fs, self.channels) / SNR
+                    r_singlechannel = np.random(self.duration * self.Fs) / SNR
+                    # receive the signal
+                    #for i in range(self.n_path):
+                        # this doesn't bode well
+                    x_tx, y_tx = self.x_tx_list, self.y_tx_list
+                    reflection = self.reflection_list
+                    # how does this math work? computes distance from each (UE) to each array node
+                    # should rxs have points?
                     dx, dy = x_rx - x_tx, y_rx - y_tx
                     d_rx_tx = np.sqrt(dx**2 + dy**2)
                     delta_tau = d_rx_tx / self.c
                     delay = np.round(delta_tau * self.Fs).astype(int)
                     for j, delay_j in enumerate(delay):
                         # print(delay_j/4)
-                        r_multichannel[delay_j:delay_j+len(self.s), j] += reflection * self.s
+                        r_singlechannel[delay_j:delay_j+len(self.s[:,0]), j] += reflection * self.s # let's hope this works with n x M matrix
 
-                # get S(theta) -- the angle of the source
-                r = r_multichannel[:,:self.M]
-                r_fft = np.fft.fft(r, axis=0)
-                freqs = np.fft.fftfreq(len(r[:, 0]), 1/self.Fs)
+                    # get S(theta) -- the angle of the source (you have this already)
+                    r = r_singlechannel #[:,:self.M]
+                    r_fft = np.fft.fft(r, axis=0)
+                    freqs = np.fft.fftfreq(len(r[:, 0]), 1/self.Fs)
 
-                index = np.where((freqs >= self.fc-self.R/2) & (freqs < self.fc+self.R/2))[0]
-                N = len(index)
-                fk = freqs[index]       
-                yk = r_fft[index, :]    # N*M
+                    index = np.where((freqs >= self.fc-self.R/2) & (freqs < self.fc+self.R/2))[0]
+                    N = len(index)
+                    fk = freqs[index]       
+                    yk = r_fft[index, :]    # N*M
 
-                S_theta = np.arange(self.theta_start, self.theta_end, 1,dtype="complex128")
-                N_theta = len(S_theta)
-                theta_start = np.deg2rad(self.theta_start)
-                theta_end = np.deg2rad(self.theta_end)
-                theta_list = np.linspace(theta_start, theta_end, N_theta)
+                    """
+                    S_theta = np.arange(self.theta_start, self.theta_end, 1)
+                    N_theta = len(S_theta)
+                    theta_start = np.deg2rad(self.theta_start)
+                    theta_end = np.deg2rad(self.theta_end)
+                    theta_list = np.linspace(theta_start, theta_end, N_theta)
 
-                for n_theta, theta in enumerate(theta_list):
-                    d_tau = np.sin(theta) * self.d0/self.c
-                    S_M = np.exp(-2j * np.pi * d_tau * np.dot(fk.reshape(N, 1), np.arange(self.M).reshape(1, self.M)))    # N*M
-                    SMxYk = np.einsum('ij,ji->i', S_M.conj(), yk.T,dtype="complex128")
-                    S_theta[n_theta] = np.real(np.vdot(SMxYk, SMxYk))
+                    for n_theta, theta in enumerate(theta_list):
+                        d_tau = np.sin(theta) * self.d0/self.c
+                        S_M = np.exp(-2j * np.pi * d_tau * np.dot(fk.reshape(N, 1), np.arange(self.M).reshape(1, self.M)))    # N*M
+                        SMxYk = np.einsum('ij,ji->i', S_M.conj(), yk.T)
+                        S_theta[n_theta] = np.real(np.vdot(SMxYk, SMxYk))
 
-                S_theta_peaks_idx, _ = sg.find_peaks(S_theta, height=0)
-                S_theta_peaks = S_theta[S_theta_peaks_idx]
-                theta_m_idx = np.argsort(S_theta_peaks)
-                theta_m = theta_list[S_theta_peaks_idx[theta_m_idx[-self.n_path:]]]
+                    S_theta_peaks_idx, _ = sg.find_peaks(S_theta, height=0)
+                    S_theta_peaks = S_theta[S_theta_peaks_idx]
+                    theta_m_idx = np.argsort(S_theta_peaks)
+                    theta_m = theta_list[S_theta_peaks_idx[theta_m_idx[-self.n_path:]]]
 
-                # do beamforming
-                y_tilde = np.zeros((N,self.n_path), dtype=complex)
-                for k in range(N):
-                    d_tau_m = np.sin(theta_m) * self.d0/self.c
-                    Sk = np.exp(-2j * np.pi * fk[k] * np.arange(self.M).reshape(self.M, 1) @ d_tau_m.reshape(1, self.n_path))
-                    for i in range(self.n_path):
-                        e_pu = np.zeros((self.n_path, 1))
-                        e_pu[i, 0] = 1
-                        wk = Sk @ np.linalg.inv(Sk.conj().T @ Sk) @ e_pu
-                        y_tilde[k, i] = wk.conj().T @ yk[k, :].T
+                    # do beamforming
+                    y_tilde = np.zeros((N,self.n_path), dtype=complex)
+                    for k in range(N):
+                        d_tau_m = np.sin(theta_m) * self.d0/self.c
+                        Sk = np.exp(-2j * np.pi * fk[k] * np.arange(self.M).reshape(self.M, 1) @ d_tau_m.reshape(1, self.n_path))
+                        for i in range(self.n_path):
+                            e_pu = np.zeros((self.n_path, 1))
+                            e_pu[i, 0] = 1
+                            wk = Sk @ np.linalg.inv(Sk.conj().T @ Sk) @ e_pu
+                            y_tilde[k, i] = wk.conj().T @ yk[k, :].T
+                    """
+                    #y_fft = np.zeros((len(r[:, 0]), self.n_path), complex)
+                    #y_fft = yk #y_fft[index,:]
+                    y = yk #np.fft.ifft(y_fft, axis=0)
 
-                y_fft = np.zeros((len(r[:, 0]), self.n_path), complex)
-                y_fft[index, :] = y_tilde
-                y = np.fft.ifft(y_fft, axis=0)
+                    # processing the signal we get from bf
+                    r_singlechannel_1 = y
 
-                # processing the signal we get from bf
-                r_multichannel_1 = y
+                    K_list = [self.n_path]
+                    K = self.n_path
+                    if K == 1:
+                        r_singlechannel_1 = r_singlechannel_1.reshape(len(r_singlechannel_1), 1)
+                    v_singlechannel = []
+                    peaks_rx = 0
+                    for i in range(K):
+                        r = np.squeeze(r_singlechannel_1[:, i]) # really shouldn't change anything
+                        v = r * np.exp(-2 * np.pi * 1j * self.fc * np.arange(len(r))/self.Fs)
+                        v = sg.decimate(v, self.df)
+                        fractional_spacing = self.nsps/self.df
+                        _, rc_rx = self.rrcosfilter(16 * int(self.fs / self.R), 0.5, 1 / self.R, self.fs)
+                        v = np.convolve(v, rc_rx, "full")
+                        # v /= np.sqrt(np.var(v))
+                        if np.var(v) > 1e-6:
+                            v /= np.sqrt(np.var(v))
+                        else:
+                            v = np.zeros_like(v)
+                        if i == 0:
+                            xcorr_for_peaks = np.abs(sg.fftconvolve(sg.decimate(v, self.Ns), self.preamble[::-1].conj()))
+                            xcorr_for_peaks /= xcorr_for_peaks.max()
+                            time_axis_xcorr = np.arange(0, len(xcorr_for_peaks)) / self.R * 1e3  # ms
+                            peaks_rx, _ = sg.find_peaks(
+                                xcorr_for_peaks, height=0.2, distance=len(self.preamble) - 100
+                            )
+                            # plt.figure()
+                            # plt.plot(np.abs(xcorr_for_peaks))
+                            # plt.show()
+                        v = v[peaks_rx[1] * self.Ns :]
+                        v_singlechannel.append(v)
+                    d = np.tile(self.preamble, 3)
 
-                K_list = [self.n_path]
-                K = self.n_path
-                if K == 1:
-                    r_multichannel_1 = r_multichannel_1.reshape(len(r_multichannel_1), 1)
-                v_multichannel = []
-                peaks_rx = 0
-                for i in range(K):
-                    r = np.squeeze(r_multichannel_1[:, i])
-                    v = r * np.exp(-2 * np.pi * 1j * self.fc * np.arange(len(r))/self.Fs)
-                    v = sg.decimate(v, self.df)
-                    fractional_spacing = self.nsps/self.df
-                    _, rc_rx = self.rrcosfilter(16 * int(self.fs / self.R), 0.5, 1 / self.R, self.fs)
-                    v = np.convolve(v, rc_rx, "full")
-                    # v /= np.sqrt(np.var(v))
-                    if np.var(v) > 1e-6:
-                        v /= np.sqrt(np.var(v))
-                    else:
-                        v = np.zeros_like(v)
-                    if i == 0:
-                        xcorr_for_peaks = np.abs(sg.fftconvolve(sg.decimate(v, self.Ns), self.preamble[::-1].conj()))
-                        xcorr_for_peaks /= xcorr_for_peaks.max()
-                        time_axis_xcorr = np.arange(0, len(xcorr_for_peaks)) / self.R * 1e3  # ms
-                        peaks_rx, _ = sg.find_peaks(
-                            xcorr_for_peaks, height=0.2, distance=len(self.preamble) - 100
-                        )
-                        # plt.figure()
-                        # plt.plot(np.abs(xcorr_for_peaks))
-                        # plt.show()
-                    v = v[peaks_rx[1] * self.Ns :]
-                    v_multichannel.append(v)
-                d = np.tile(self.preamble, 3)
+                    v_rls = np.zeros((K, len(v_singlechannel[0])), dtype=complex)
+                    for channel in range(K):
+                        v = v_singlechannel[channel]
+                        v_rls[channel, 0:len(v)] = v
 
-                v_rls = np.zeros((K, len(v_multichannel[0])), dtype=complex)
-                for channel in range(K):
-                    v = v_multichannel[channel]
-                    v_rls[channel, 0:len(v)] = v
+                    for K_channels in K_list:
+                        d_hat, mse, n_err, n_training = self.processing(v_rls, d, K_channels, bf=True)
+                        self.MSE_SNR[i_snr, i_sim] = mse
+                        self.ERR_SNR[i_snr, i_sim] = n_err
 
-                for K_channels in K_list:
-                    d_hat, mse, n_err, n_training = self.processing(v_rls, d, K_channels, bf=True)
-                    self.MSE_SNR[i_snr, i_sim] = mse
-                    self.ERR_SNR[i_snr, i_sim] = n_err
+            self.mean_mse[i_UE] = np.mean(self.MSE_SNR, axis=1)
+            self.mean_err[i_UE] = np.mean(self.ERR_SNR, axis=1)
 
-                # now transmit based on theta
-                theta = theta_m[0:self.n_UE] 
-                #A = np.exp(-1j*2*np.pi*np.sind(theta).T *self.d0*np.arange(0,self.M-1)).T 
-                # data portion -> received signal? or just fabricate
-                #F = v_rls # ?
-                #X = A*F
-                # transmit(X)
-    
-        self.mean_mse = np.mean(self.MSE_SNR, axis=1)
-        self.mean_err = np.mean(self.ERR_SNR, axis=1)
-        return theta
-
-    def processing(self, v_rls, d, K=1, bf=True):
-        channel_list = {1:[0], 2:[0,11], 3:[0,6,11], 4:[0,4,7,11], 8:[0,1,3,4,6,7,9,11], 6:[0,2,4,6,8,10]}
+    def processing(self, v_rls, d, K=1, bf=False):
+        channel_list = {1:[0], 2:[0,11], 3:[0,6,11], 4:[0,4,7,11], 8:[0,1,3,4,6,7,9,11], 6:[0,2,4,6,8,10]} #assuming these are pilot tones?
         if bf == False:
             v_rls = v_rls[channel_list[K], :]
         # v_rls = v_rls[random.sample(range(0, 12), K), :]
