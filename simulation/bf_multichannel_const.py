@@ -5,7 +5,9 @@ import matplotlib.pyplot as plt
 import sounddevice as sd
 from tqdm import tqdm
 
-class bf_multichannel():
+# this code is identical to bf_multichannel but introduces get_constellation to plot the constellation diagram
+
+class bf_multichannel_const():
 
     fc = 6.5e3
     M0 = 16
@@ -45,6 +47,9 @@ class bf_multichannel():
         self.modem = QAMModem(self.M0)
         self.preamble = self.generate_preamble(11, self.modem)
         self.preambles = np.tile(self.preamble, self.n_repeat)
+
+        self.return_symbols = np.zeros((len(self.snr_list), n_sim,3*len(self.preamble)), dtype=complex)
+        #self.mean_symbols = np.zeros((len(self.snr_list),len(self.preamble)), dtype=complex)
 
         self.seq0 = self.generate_gold_sequence(7, index=0) * 2 - 1
         self.seq1 = self.generate_gold_sequence(7, index=1) * 2 - 1
@@ -229,6 +234,7 @@ class bf_multichannel():
                     d_hat, mse, n_err, n_training = self.processing(v_rls, d, K_channels, bf=True)
                     self.MSE_SNR[i_snr, i_sim] = mse
                     self.ERR_SNR[i_snr, i_sim] = n_err
+                    self.return_symbols[i_snr, i_sim, :] = d_hat
 
                 # now transmit based on theta
                 theta = theta_m[0:self.n_UE] 
@@ -237,7 +243,7 @@ class bf_multichannel():
                 #F = v_rls # ?
                 #X = A*F
                 # transmit(X)
-    
+        self.mean_symbols = np.mean(self.return_symbols, axis=1)
         self.mean_mse = np.mean(self.MSE_SNR, axis=1)
         self.mean_err = np.mean(self.ERR_SNR, axis=1)
         return theta
