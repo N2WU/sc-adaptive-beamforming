@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import sounddevice as sd
 from tqdm import tqdm
 
-class bf_multichannel():
+class bf_multichannel_adj():
 
     fc = 6.5e3
     M0 = 16
@@ -15,7 +15,7 @@ class bf_multichannel():
     R = 3000
     Ns = 4
     channels = 16
-    M = 12  # the channels to be use
+    M = 1  # the channels to be use
     d0 = 0.05
     c = 343
     n_path = 1
@@ -28,16 +28,20 @@ class bf_multichannel():
     theta_end = 90
 
     reflection_list = np.array([1])
-    x_tx_list = np.array([0])
-    y_tx_list = np.array([1])
+    x_tx_list = np.array([0]) # eventually this will be an array
+    y_tx_list = np.array([0]) # eventually this will be an array
 
-    snr_list = np.arange(5, 15, 1) #changed from 15
+    x_rx_list = np.array([0]) 
+    y_rx_list = np.array([1]) 
 
-    def __init__(self, fc, n_path, n_sim, n_UE) -> None:
+    snr_list = np.arange(0, 5, 1) #changed from 15
+
+    def __init__(self, fc, n_path, n_sim, n_UE, theta=0) -> None:
         self.fc = fc
         self.n_path = n_path
         self.n_sim = n_sim
         self.n_UE = n_UE
+        self.theta = theta
 
         self.MSE_SNR = np.zeros((len(self.snr_list), n_sim))
         self.ERR_SNR = np.zeros_like(self.MSE_SNR)
@@ -61,6 +65,8 @@ class bf_multichannel():
         self.preamble_xcorr = sg.convolve(self.upsample(self.preamble, self.nsps), self.rc_tx, mode="same")
 
         self.s = np.real(self.preamble_rc * np.exp(2 * np.pi * 1j * self.fc * np.arange(len(self.preamble_rc))/self.Fs))
+        self.steering_vec = self.calc_steering_vec(theta)
+        self.s = np.dot(np.reshape(self.steering_vec,[-1,1]),np.reshape(self.s,[1,-1]))
         self.s /= self.s.max()
         pass
 
@@ -122,10 +128,15 @@ class bf_multichannel():
                 ) / (np.pi * t * (1 - (4 * alpha * t / Ts) * (4 * alpha * t / Ts)) / Ts)
 
         return time_idx, h_rrc
+    
+    def calc_steering_vec(self, theta):
+        steering_vec = self.d0*(np.exp(-1j*2*np.pi*np.sin(theta)))*np.arange(self.gnb_M) # double check this
+        return steering_vec
 
     def simulation(self):
-        x_rx = np.arange(0, self.d0*self.channels, self.d0)
-        y_rx = np.zeros_like(x_rx)
+        i_UE = 0
+        x_rx = self.x_rx_list[i_UE] # this is assigning its position
+        y_rx = self.y_rx_list[i_UE]
         for i_snr, snr in enumerate(self.snr_list):
             SNR = np.power(10, snr/10)
             print(f"SNR={snr}dB")
@@ -226,7 +237,7 @@ class bf_multichannel():
                     v_rls[channel, 0:len(v)] = v
 
                 for K_channels in K_list:
-                    d_hat, mse, n_err, n_training = self.processing(v_rls, d, K_channels, bf=True)
+                    d_hat, mse, n_err, n_training = self.processing(v_rls, d, K_channels, bf=False)
                     self.MSE_SNR[i_snr, i_sim] = mse
                     self.ERR_SNR[i_snr, i_sim] = n_err
 
@@ -242,7 +253,7 @@ class bf_multichannel():
         self.mean_err = np.mean(self.ERR_SNR, axis=1)
         return theta
 
-    def processing(self, v_rls, d, K=1, bf=True):
+    def processing(self, v_rls, d, K=1, bf=False):
         channel_list = {1:[0], 2:[0,11], 3:[0,6,11], 4:[0,4,7,11], 8:[0,1,3,4,6,7,9,11], 6:[0,2,4,6,8,10]}
         if bf == False:
             v_rls = v_rls[channel_list[K], :]
