@@ -33,7 +33,7 @@ class bf_multichannel_const():
     x_tx_list = np.array([0])
     y_tx_list = np.array([1])
 
-    snr_list = np.arange(5, 15, 1) #changed from 15
+    snr_list = 10 #np.arange(5, 15, 1) #changed from 15
 
     def __init__(self, fc, n_path, n_sim, n_UE) -> None:
         self.fc = fc
