@@ -16,7 +16,7 @@ class downlink():
     Ns = 4
     channels = 1
     M = 1  # 12 - the channels to be use
-    num_tx = 4
+    num_tx = 12
     d0 = 0.05
     c = 343
     n_path = 1
@@ -28,7 +28,7 @@ class downlink():
     theta_start = -90
     theta_end = 90
 
-    #reflection_list = np.array([1]) #elminimate reflections for now
+    reflection_list = np.array([1]) #elminimate reflections for now
     x_tx_list = np.arange(0, d0*channels, d0)
     y_tx_list = np.zeros_like(x_tx_list)
 
@@ -150,14 +150,14 @@ class downlink():
                 # receive the signal
                 for i in range(self.n_path):
                     x_tx, y_tx = self.x_tx_list[i], self.y_tx_list[i]
-                    #reflection = self.reflection_list[i]
+                    reflection = self.reflection_list[i]
                     dx, dy = x_rx - x_tx, y_rx - y_tx
                     d_rx_tx = np.sqrt(dx**2 + dy**2)
                     delta_tau = d_rx_tx / self.c
                     delay = np.round(delta_tau * self.Fs).astype(int)
                     for j, delay_j in enumerate(delay):
                         # print(delay_j/4)
-                        r_singlechannel[delay_j:delay_j+len(self.s_tx[:,1])] += self.s_tx[:,j] # * reflection (eliminated for now)
+                        r_singlechannel[delay_j:delay_j+len(self.s_tx[:,1])] += self.s_tx[:,j] * reflection #(eliminated for now)
 
                 # get S(theta) -- the angle of the source
                 # phase correction/precombining cannot work
