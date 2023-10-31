@@ -16,7 +16,7 @@ class downlink():
     Ns = 4
     channels = 1
     M = 1  # 12 - the channels to be use
-    num_tx = 12
+    num_tx = 4
     d0 = 0.05
     c = 343
     n_path = 1
@@ -32,13 +32,14 @@ class downlink():
     x_tx_list = np.arange(0, d0*channels, d0)
     y_tx_list = np.zeros_like(x_tx_list)
 
-    snr_list = np.arange(5, 15, 1) #changed from 15
+    snr_list = np.arange(0, 15, 1) #changed from 15
 
-    def __init__(self, fc, n_path, n_sim, theta, apply_bf = True) -> None:
+    def __init__(self, fc, n_path, n_sim, theta, wk, apply_bf = True) -> None:
         self.fc = fc
         self.n_path = n_path
         self.n_sim = n_sim
         self.theta = theta
+        self.wk = wk
         self.apply_bf = apply_bf
 
         self.MSE_SNR = np.zeros((len(self.snr_list), n_sim))
@@ -65,7 +66,7 @@ class downlink():
 
         self.s = np.real(self.preamble_rc * np.exp(2 * np.pi * 1j * self.fc * np.arange(len(self.preamble_rc))/self.Fs))
 
-        self.steering_vec = self.calc_steering_vec(0)
+        self.steering_vec = self.calc_steering_vec(theta, wk)
 
         self.s_tx = np.dot(np.reshape(self.steering_vec,[-1,1]),np.reshape(self.s,[1,-1]))
         self.s_tx /= self.s_tx.max()
@@ -131,9 +132,10 @@ class downlink():
 
         return time_idx, h_rrc
     
-    def calc_steering_vec(self, theta):
+    def calc_steering_vec(self, theta, wk):
         if self.apply_bf == True:
             steering_vec = np.exp(-1j*2*np.pi*np.sin(theta)*np.arange(self.num_tx)*self.d0)
+            steering_vec = wk
         elif self.apply_bf == False:
             steering_vec = np.ones(self.num_tx)/self.num_tx
         return steering_vec

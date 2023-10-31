@@ -246,7 +246,7 @@ class bf_multichannel_const():
         self.mean_symbols = np.mean(self.return_symbols, axis=1)
         self.mean_mse = np.mean(self.MSE_SNR, axis=1)
         self.mean_err = np.mean(self.ERR_SNR, axis=1)
-        return theta
+        return theta, wk
 
     def processing(self, v_rls, d, K=1, bf=True):
         channel_list = {1:[0], 2:[0,11], 3:[0,6,11], 4:[0,4,7,11], 8:[0,1,3,4,6,7,9,11], 6:[0,2,4,6,8,10]}
