@@ -139,7 +139,7 @@ class bf_multichannel_const():
                 # receive the signal
                 for i in range(self.n_path):
                     x_tx, y_tx = self.x_tx_list[i], self.y_tx_list[i]
-                    reflection = self.reflection_list[i]
+                    reflection = self.reflection_list[i] #delay ans sum not scale
                     dx, dy = x_rx - x_tx, y_rx - y_tx
                     d_rx_tx = np.sqrt(dx**2 + dy**2)
                     delta_tau = d_rx_tx / self.c
@@ -171,7 +171,7 @@ class bf_multichannel_const():
                     S_theta[n_theta] = np.real(np.vdot(SMxYk, SMxYk))
 
                 S_theta_peaks_idx, _ = sg.find_peaks(S_theta, height=0)
-                S_theta_peaks = S_theta[S_theta_peaks_idx]
+                S_theta_peaks = S_theta[S_theta_peaks_idx] # plot and see
                 theta_m_idx = np.argsort(S_theta_peaks)
                 theta_m = theta_list[S_theta_peaks_idx[theta_m_idx[-self.n_path:]]]
 
@@ -246,7 +246,7 @@ class bf_multichannel_const():
         self.mean_symbols = np.mean(self.return_symbols, axis=1)
         self.mean_mse = np.mean(self.MSE_SNR, axis=1)
         self.mean_err = np.mean(self.ERR_SNR, axis=1)
-        return theta, wk
+        return theta, wk, S_theta
 
     def processing(self, v_rls, d, K=1, bf=True):
         channel_list = {1:[0], 2:[0,11], 3:[0,6,11], 4:[0,4,7,11], 8:[0,1,3,4,6,7,9,11], 6:[0,2,4,6,8,10]}
