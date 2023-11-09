@@ -21,8 +21,8 @@ class downlink():
     c = 343
     n_path = 1
     n_sim = 1
-    feedforward_taps = 30
-    feedbackward_taps = 2
+    feedforward_taps = 1
+    feedbackward_taps = 1
     alpha_rls = 0.9999
 
     theta_start = -90
