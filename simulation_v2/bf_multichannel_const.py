@@ -33,7 +33,7 @@ class bf_multichannel_const():
     x_tx_list = np.array([0])
     y_tx_list = np.array([1])
 
-    snr_list = np.arange(10, 15, 1) #changed from 15
+    snr_list = [30] #np.arange(10, 15, 1) #changed from 15
 
     def __init__(self, fc, n_path, n_sim, n_UE) -> None:
         self.fc = fc
@@ -246,6 +246,7 @@ class bf_multichannel_const():
         self.mean_symbols = np.mean(self.return_symbols, axis=1)
         self.mean_mse = np.mean(self.MSE_SNR, axis=1)
         self.mean_err = np.mean(self.ERR_SNR, axis=1)
+        self.mean_v = np.mean(v_rls, axis=0)
         return theta, wk, S_theta
 
     def processing(self, v_rls, d, K=1, bf=True):

@@ -32,7 +32,7 @@ class downlink():
     x_tx_list = np.arange(0, d0*channels, d0)
     y_tx_list = np.zeros_like(x_tx_list)
 
-    snr_list = np.arange(0, 15, 1) #changed from 15
+    snr_list = [15] # np.arange(0, 15, 1) #changed from 15
 
     def __init__(self, fc, n_path, n_sim, theta, wk, apply_bf = True) -> None:
         self.fc = fc
@@ -63,7 +63,7 @@ class downlink():
         self.preamble_upsampled = self.upsample(self.preambles, self.nsps)
         self.preamble_rc = sg.convolve(self.preamble_upsampled, self.rc_tx, mode="same")
         self.preamble_xcorr = sg.convolve(self.upsample(self.preamble, self.nsps), self.rc_tx, mode="same")
-
+        # so s becomes a slightly different length due to pulse shaping filter
         self.s = np.real(self.preamble_rc * np.exp(2 * np.pi * 1j * self.fc * np.arange(len(self.preamble_rc))/self.Fs))
 
         self.steering_vec = self.calc_steering_vec(theta, wk)
@@ -170,7 +170,7 @@ class downlink():
                 # processing the signal we get from bf (perhaps not, though y adds additional channel effects?)
                 #r_singlechannel_1 = y
                 r_singlechannel_1 = r_singlechannel #it's delay corrected...
-
+                #r_singlechannel_1 = np.copy(self.s)
                 K_list = [self.n_path]
                 K = self.n_path
                 if K == 1:
@@ -179,11 +179,11 @@ class downlink():
                 peaks_rx = 0
                 for i in range(K): #this does it twice, one for reflect and one for los
                     r = np.squeeze(r_singlechannel_1[:, i])
-                    v = r * np.exp(-2 * np.pi * 1j * self.fc * np.arange(len(r))/self.Fs)
-                    v = sg.decimate(v, self.df)
+                    g = r * np.exp(-2 * np.pi * 1j * self.fc * np.arange(len(r))/self.Fs)
+                    g = sg.decimate(g, self.df)
                     fractional_spacing = self.nsps/self.df
                     _, rc_rx = self.rrcosfilter(16 * int(self.fs / self.R), 0.5, 1 / self.R, self.fs)
-                    v = np.convolve(v, rc_rx, "full")
+                    v = np.convolve(g, rc_rx, "full")
                     # v /= np.sqrt(np.var(v))
                     if np.var(v) > 1e-6:
                         v /= np.sqrt(np.var(v))
@@ -217,6 +217,7 @@ class downlink():
         self.mean_symbols = np.mean(self.return_symbols, axis=1)    
         self.mean_mse = np.mean(self.MSE_SNR, axis=1)
         self.mean_err = np.mean(self.ERR_SNR, axis=1)
+        self.mean_v  = g.flatten()
 
     def processing(self, v_rls, d, K=1, bf=True):
         channel_list = {1:[0], 2:[0,11], 3:[0,6,11], 4:[0,4,7,11], 8:[0,1,3,4,6,7,9,11], 6:[0,2,4,6,8,10]}
