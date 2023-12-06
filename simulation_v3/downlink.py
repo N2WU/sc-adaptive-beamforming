@@ -45,93 +45,17 @@ class downlink():
         self.MSE_SNR = np.zeros((len(self.snr_list), n_sim))
         self.ERR_SNR = np.zeros_like(self.MSE_SNR)
 
-        self.modem = QAMModem(self.M0)
-        self.preamble = self.generate_preamble(11, self.modem)
-        self.preambles = np.tile(self.preamble, self.n_repeat)
-        self.return_symbols = np.zeros((len(self.snr_list), n_sim,3*len(self.preamble)), dtype=complex)
+        self.preamble = np.array(sg.max_len_seq(bits)[0]) * 2 - 1.0
 
-        self.seq0 = self.generate_gold_sequence(7, index=0) * 2 - 1
-        self.seq1 = self.generate_gold_sequence(7, index=1) * 2 - 1
-
-        self.fs = self.Ns * self.R
-        self.nsps = int(self.Fs / self.R)
-        self.uf = int(self.Fs / self.R)
-        self.df = int(self.uf / self.Ns)
-        
-        self.time_idx, self.rc_tx = self.rrcosfilter(16 * int(1 / self.R * self.Fs), 0.5, 1 / self.R, self.Fs)
-
-        self.preamble_upsampled = self.upsample(self.preambles, self.nsps)
-        self.preamble_rc = sg.convolve(self.preamble_upsampled, self.rc_tx, mode="same")
-        self.preamble_xcorr = sg.convolve(self.upsample(self.preamble, self.nsps), self.rc_tx, mode="same")
-        # so s becomes a slightly different length due to pulse shaping filter
-        self.s = np.real(self.preamble_rc * np.exp(2 * np.pi * 1j * self.fc * np.arange(len(self.preamble_rc))/self.Fs))
-
+        #self.return_symbols = 
+        self.u = np.tile(self.preamble, self.n_repeat)
+        self.u = sg.resample_poly(self.u, self.ns, 1)
+        self.s = np.real(self.u * np.exp(2j * np.pi * self.fc * np.arange(len(self.u)) / self.fs))
         self.steering_vec = self.calc_steering_vec(theta, wk)
-
-        self.s_tx = np.dot(np.reshape(self.steering_vec,[-1,1]),np.reshape(self.s,[1,-1]))
-        self.s_tx /= self.s_tx.max()
-        #self.s_tx = np.tile(self.s,(self.num_tx,1))
+        self.s = np.dot(np.reshape(self.steering_vec,[-1,1]),np.reshape(self.s,[1,-1]))
+        self.s /= np.max(np.abs(self.s))
         pass
 
-    # functions for preamble generation
-    def gold_preferred_poly(self, nBits):
-        return {
-            5: (np.array([5, 2, 0]), np.array([5, 4, 3, 2, 0])),
-            6: (np.array([6, 1, 0]), np.array([6, 5, 2, 1, 0])),
-            7: (np.array([7, 3, 0]), np.array([7, 3, 2, 1, 0])),
-            9: (np.array([9, 4, 0]), np.array([9, 6, 4, 3, 0])),
-            10: (np.array([10, 3, 0]), np.array([10, 8, 3, 2, 0])),
-            11: (np.array([11, 2, 0]), np.array([11, 8, 5, 2, 0])),
-        }[nBits]
-
-    def generate_gold_sequence(
-            self, nBits, index=0, poly1=None, poly2=None, state1=None, state2=None
-    ):
-        from scipy.signal import max_len_seq as mls
-
-        if (poly1 and poly2) is None:
-            poly1, poly2 = self.gold_preferred_poly(nBits)
-        return np.bitwise_xor(
-            mls(nBits, taps=poly1, state=state1)[0],
-            np.roll(mls(nBits, taps=poly2, state=state2)[0], -index),
-        )
-
-    def generate_preamble(self, nBits, modem):
-        sequence = np.append(self.generate_gold_sequence(nBits, index=0), 0)
-        sequence_mod = modem.modulate(sequence)
-        return sequence_mod
-
-    def upsample(self, s, n, phase=0):
-        return np.roll(np.kron(s, np.r_[1, np.zeros(n - 1)]), phase)
-
-    def rrcosfilter(self, N, alpha, Ts, Fs):
-        T_delta = 1 / float(Fs)
-        time_idx = ((np.arange(N) - N / 2)) * T_delta
-        sample_num = np.arange(N)
-        h_rrc = np.zeros(N, dtype=float)
-
-        for x in sample_num:
-            t = (x - N / 2) * T_delta
-            if t == 0.0:
-                h_rrc[x] = 1.0 - alpha + (4 * alpha / np.pi)
-            elif alpha != 0 and t == Ts / (4 * alpha):
-                h_rrc[x] = (alpha / np.sqrt(2)) * (
-                    ((1 + 2 / np.pi) * (np.sin(np.pi / (4 * alpha))))
-                    + ((1 - 2 / np.pi) * (np.cos(np.pi / (4 * alpha))))
-                )
-            elif alpha != 0 and t == -Ts / (4 * alpha):
-                h_rrc[x] = (alpha / np.sqrt(2)) * (
-                    ((1 + 2 / np.pi) * (np.sin(np.pi / (4 * alpha))))
-                    + ((1 - 2 / np.pi) * (np.cos(np.pi / (4 * alpha))))
-                )
-            else:
-                h_rrc[x] = (
-                    np.sin(np.pi * t * (1 - alpha) / Ts)
-                    + 4 * alpha * (t / Ts) * np.cos(np.pi * t * (1 + alpha) / Ts)
-                ) / (np.pi * t * (1 - (4 * alpha * t / Ts) * (4 * alpha * t / Ts)) / Ts)
-
-        return time_idx, h_rrc
-    
     def calc_steering_vec(self, theta, wk):
         if self.apply_bf == True:
             steering_vec = np.exp(-1j*2*np.pi*np.sin(theta)*np.arange(self.num_tx)*self.d0)
@@ -143,11 +67,12 @@ class downlink():
     def simulation(self):
         x_rx = np.array([0])
         y_rx = np.array([1])
+        rng = np.random.RandomState(2021)
         for i_snr, snr in enumerate(self.snr_list):
             SNR = np.power(10, snr/10)
             print(f"SNR={snr}dB")
             for i_sim in tqdm(range(self.n_sim)):
-                r_singlechannel = np.random.randn(self.duration * self.Fs) / SNR
+                r_singlechannel = rng.randn(self.duration * self.Fs) / SNR
                 r_singlechannel = r_singlechannel.astype('complex128')
                 # receive the signal
                 for i in range(self.n_path):
@@ -179,8 +104,8 @@ class downlink():
                 peaks_rx = 0
                 for i in range(K): #this does it twice, one for reflect and one for los
                     r = np.squeeze(r_singlechannel_1[:, i])
-                    g = r * np.exp(-2 * np.pi * 1j * self.fc * np.arange(len(r))/self.Fs)
-                    g = sg.decimate(g, self.df)
+                    v = r * np.exp(-2 * np.pi * 1j * self.fc * np.arange(len(r))/self.Fs)
+                    g = sg.decimate(v, self.df)
                     fractional_spacing = self.nsps/self.df
                     _, rc_rx = self.rrcosfilter(16 * int(self.fs / self.R), 0.5, 1 / self.R, self.fs)
                     v = np.convolve(g, rc_rx, "full")
@@ -217,7 +142,7 @@ class downlink():
         self.mean_symbols = np.mean(self.return_symbols, axis=1)    
         self.mean_mse = np.mean(self.MSE_SNR, axis=1)
         self.mean_err = np.mean(self.ERR_SNR, axis=1)
-        self.mean_v  = g.flatten()
+        self.mean_v = np.mean(v_rls, axis=0)
 
     def processing(self, v_rls, d, K=1, bf=True):
         channel_list = {1:[0], 2:[0,11], 3:[0,6,11], 4:[0,4,7,11], 8:[0,1,3,4,6,7,9,11], 6:[0,2,4,6,8,10]}
