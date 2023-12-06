@@ -5,67 +5,64 @@ import matplotlib.pyplot as plt
 import sounddevice as sd
 from tqdm import tqdm
 
-# this code is identical to bf_multichannel but introduces get_constellation to plot the constellation diagram
+class uplink():
 
-class bf_multichannel_const():
-
-    fc = 6.5e3
-    M0 = 4
-    duration = 5
-    Fs = 96000
-    n_repeat = 20
-    R = 3000
-    Ns = 4
-    channels = 16
-    M = 12  # the channels to be use
-    d0 = 0.05
-    c = 343
-    n_path = 1
-    n_sim = 1
-    feedforward_taps = 30
-    feedbackward_taps = 2
-    alpha_rls = 0.9999
+    fc = 6.5e3                      # carrier frequency
+    #M0 = 4                         # modulation index
+    duration = 1                    # transmission duration, s
+    Fs = 96000                      # sampling frequency
+    n_repeat = 4                    # number of preamble repitions
+    R = 3000                        # symbol rate (symbol/sec)
+    Ns = 4                          # samples per symbol (unitless)
+    channels = 16                   # array elements
+    d0 = 0.05                       # element spacing, m
+    c = 343                         # speed of wave
+    n_path = 1                      # number of paths (LOS versus reflection)
+    n_sim = 1                       # number of simulation repitions
+    feedforward_taps = 30           # number of equalizer FF taps
+    feedbackward_taps = 2           # number of equalizer FB taps
+    alpha_rls = 0.9999              # alpha for filter
 
     theta_start = -90
     theta_end = 90
 
-    reflection_list = np.array([1])
-    x_tx_list = np.array([0])
-    y_tx_list = np.array([1])
+    reflection_list = np.array([1])     # reflection magnitude for each user node
+    x_tx_list = np.array([0])           # node x coordinates
+    y_tx_list = np.array([1])           # node y coordinates
 
     snr_list = [30] #np.arange(10, 15, 1) #changed from 15
 
-    def __init__(self, fc, n_path, n_sim, n_UE) -> None:
+    def __init__(self, fc, n_path, n_sim) -> None:
         self.fc = fc
         self.n_path = n_path
         self.n_sim = n_sim
-        self.n_UE = n_UE
 
         self.MSE_SNR = np.zeros((len(self.snr_list), n_sim))
         self.ERR_SNR = np.zeros_like(self.MSE_SNR)
 
-        self.modem = QAMModem(self.M0)
-        self.preamble = self.generate_preamble(11, self.modem)
+        self.preamble = self.generate_preamble(11) # gold code repition for BPSK
         self.preambles = np.tile(self.preamble, self.n_repeat)
 
-        self.return_symbols = np.zeros((len(self.snr_list), n_sim,3*len(self.preamble)), dtype=complex)
+        #self.return_symbols = np.zeros((len(self.snr_list), n_sim,2*len(self.preamble)), dtype=complex) # rework to return preamble
         #self.mean_symbols = np.zeros((len(self.snr_list),len(self.preamble)), dtype=complex)
 
         self.seq0 = self.generate_gold_sequence(7, index=0) * 2 - 1
         self.seq1 = self.generate_gold_sequence(7, index=1) * 2 - 1
 
-        self.fs = self.Ns * self.R
-        self.nsps = int(self.Fs / self.R)
-        self.uf = int(self.Fs / self.R)
-        self.df = int(self.uf / self.Ns)
+        self.fs = self.Ns * self.R              # symbol-sampling rate (samps/second)
+        self.nsps = int(self.Fs / self.R)       # number of samples per symbol
+        self.uf = int(self.Fs / self.R)         # upsample factor
+        self.df = int(self.uf / self.Ns)        # downsample factor
         
-        self.time_idx, self.rc_tx = self.rrcosfilter(16 * int(1 / self.R * self.Fs), 0.5, 1 / self.R, self.Fs)
+        self.time_idx, self.rc_tx = self.rrcosfilter(16 * int(1 / self.R * self.Fs), 0.5, 1 / self.R, self.Fs) # time interval for rrcos filter, filter response
 
-        self.preamble_upsampled = self.upsample(self.preambles, self.nsps)
-        self.preamble_rc = sg.convolve(self.preamble_upsampled, self.rc_tx, mode="same")
-        self.preamble_xcorr = sg.convolve(self.upsample(self.preamble, self.nsps), self.rc_tx, mode="same")
+        # try without upsampling preamble?
+        self.preamble_upsampled = self.preambles #self.upsample(self.preambles, self.nsps) # upsample generated gold codes (by upsampled factor ~'32')
+        self.preamble_rc = sg.convolve(self.preamble_upsampled, self.rc_tx, mode="same") # pulse shape
+        #self.preamble_xcorr = sg.convolve(self.upsample(self.preamble, self.nsps), self.rc_tx, mode="same") # convolve rrc filter response with upsampled gold code
+        self.preamble_xcorr = sg.convolve(self.preamble, self.rc_tx, mode="same")
 
-        self.s = np.real(self.preamble_rc * np.exp(2 * np.pi * 1j * self.fc * np.arange(len(self.preamble_rc))/self.Fs))
+        self.s = np.real(self.preamble_rc * np.exp(2 * np.pi * 1j * self.fc * np.arange(len(self.preamble_rc))/self.Fs)) # upshift to passband frequency
         self.s /= self.s.max()
         pass
 
@@ -92,9 +89,9 @@ class bf_multichannel_const():
             np.roll(mls(nBits, taps=poly2, state=state2)[0], -index),
         )
 
-    def generate_preamble(self, nBits, modem):
+    def generate_preamble(self, nBits):
         sequence = np.append(self.generate_gold_sequence(nBits, index=0), 0)
-        sequence_mod = modem.modulate(sequence)
+        sequence_mod = sequence*2 - 1
         return sequence_mod
 
     def upsample(self, s, n, phase=0):
@@ -135,21 +132,23 @@ class bf_multichannel_const():
             SNR = np.power(10, snr/10)
             print(f"SNR={snr}dB")
             for i_sim in tqdm(range(self.n_sim)):
-                r_multichannel = np.random.randn(self.duration * self.Fs, self.channels) / SNR
+                r_multichannel = np.random.randn(self.duration * self.Fs, self.channels) / SNR #roundabout AWGN channel
                 # receive the signal
                 for i in range(self.n_path):
                     x_tx, y_tx = self.x_tx_list[i], self.y_tx_list[i]
-                    reflection = self.reflection_list[i] #delay ans sum not scale
+                    reflection = self.reflection_list[i] #delay and sum not scale
                     dx, dy = x_rx - x_tx, y_rx - y_tx
                     d_rx_tx = np.sqrt(dx**2 + dy**2)
                     delta_tau = d_rx_tx / self.c
-                    delay = np.round(delta_tau * self.Fs).astype(int)
+                    delay = np.round(delta_tau * self.Fs).astype(int) # sample delay
                     for j, delay_j in enumerate(delay):
                         # print(delay_j/4)
+                        # reflection may need ironed out
+                        #   this one-liner is too flashy: must introduce time-delay from reflection, sum, and impart to array elements
                         r_multichannel[delay_j:delay_j+len(self.s), j] += reflection * self.s
 
                 # get S(theta) -- the angle of the source
-                r = r_multichannel[:,:self.M]
+                r = r_multichannel[:,:self.channels] # received signal r passband
                 r_fft = np.fft.fft(r, axis=0)
                 freqs = np.fft.fftfreq(len(r[:, 0]), 1/self.Fs)
 
@@ -166,7 +165,7 @@ class bf_multichannel_const():
 
                 for n_theta, theta in enumerate(theta_list):
                     d_tau = np.sin(theta) * self.d0/self.c
-                    S_M = np.exp(-2j * np.pi * d_tau * np.dot(fk.reshape(N, 1), np.arange(self.M).reshape(1, self.M)))    # N*M
+                    S_M = np.exp(-2j * np.pi * d_tau * np.dot(fk.reshape(N, 1), np.arange(self.channels).reshape(1, self.channels)))    # N*M
                     SMxYk = np.einsum('ij,ji->i', S_M.conj(), yk.T,dtype="complex128")
                     S_theta[n_theta] = np.real(np.vdot(SMxYk, SMxYk))
 
@@ -179,7 +178,7 @@ class bf_multichannel_const():
                 y_tilde = np.zeros((N,self.n_path), dtype=complex)
                 for k in range(N):
                     d_tau_m = np.sin(theta_m) * self.d0/self.c
-                    Sk = np.exp(-2j * np.pi * fk[k] * np.arange(self.M).reshape(self.M, 1) @ d_tau_m.reshape(1, self.n_path))
+                    Sk = np.exp(-2j * np.pi * fk[k] * np.arange(self.channels).reshape(self.channels, 1) @ d_tau_m.reshape(1, self.n_path))
                     for i in range(self.n_path):
                         e_pu = np.zeros((self.n_path, 1))
                         e_pu[i, 0] = 1
@@ -202,7 +201,7 @@ class bf_multichannel_const():
                 for i in range(K):
                     r = np.squeeze(r_multichannel_1[:, i])
                     v = r * np.exp(-2 * np.pi * 1j * self.fc * np.arange(len(r))/self.Fs)
-                    v = sg.decimate(v, self.df)
+                    v = sg.decimate(v, self.df) # maybe this needs to be removed?
                     fractional_spacing = self.nsps/self.df
                     _, rc_rx = self.rrcosfilter(16 * int(self.fs / self.R), 0.5, 1 / self.R, self.fs)
                     v = np.convolve(v, rc_rx, "full")
@@ -237,7 +236,7 @@ class bf_multichannel_const():
                     self.return_symbols[i_snr, i_sim, :] = d_hat
 
                 # now transmit based on theta
-                theta = theta_m[0:self.n_UE] 
+                theta = theta_m[0]
                 #A = np.exp(-1j*2*np.pi*np.sind(theta).T *self.d0*np.arange(0,self.M-1)).T 
                 # data portion -> received signal? or just fabricate
                 #F = v_rls # ?
