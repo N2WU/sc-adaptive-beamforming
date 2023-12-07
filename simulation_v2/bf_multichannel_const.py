@@ -10,7 +10,7 @@ from tqdm import tqdm
 class bf_multichannel_const():
 
     fc = 6.5e3
-    M0 = 4
+    M0 = 16
     duration = 5
     Fs = 96000
     n_repeat = 20

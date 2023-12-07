@@ -7,16 +7,16 @@ from tqdm import tqdm
 
 # this code is identical to bf_multichannel but introduces get_constellation to plot the constellation diagram
 
-class bf_multichannel_const():
+class uplink():
 
-    fc = 6.5e3
-    M0 = 4
-    duration = 5
-    Fs = 96000
-    n_repeat = 20
-    R = 3000
-    Ns = 4
-    channels = 16
+    fc = 6.5e3          # Carrier frequency
+    M0 = 8              # Modulation Index
+    duration = 5        # Seconds
+    Fs = 96000          # Sampling Frequency
+    n_repeat = 20       # Number of repetitions for the preamble
+    R = 3000            # Symbol Rate
+    Ns = 4              # Samples per Symbol
+    channels = 16       # Number of Receive Antennas
     M = 12  # the channels to be use
     d0 = 0.05
     c = 343
@@ -49,7 +49,6 @@ class bf_multichannel_const():
         self.preambles = np.tile(self.preamble, self.n_repeat)
 
         self.return_symbols = np.zeros((len(self.snr_list), n_sim,3*len(self.preamble)), dtype=complex)
-        #self.mean_symbols = np.zeros((len(self.snr_list),len(self.preamble)), dtype=complex)
 
         self.seq0 = self.generate_gold_sequence(7, index=0) * 2 - 1
         self.seq1 = self.generate_gold_sequence(7, index=1) * 2 - 1
