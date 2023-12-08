@@ -7,16 +7,18 @@ from tqdm import tqdm
 
 class uplink():
 
-    fc = 6.5e3                      # carrier frequency
+    fc = 15e3                       # carrier frequency
     fs = 48000                      # sampling frequency
     n_repeat = 16                   # number of preamble repitions
     R = 3000                        # symbol rate (symbol/sec)
-    ns = fs/R                       # samples per symbol
+    nsps = int(fs/R)                # samples per symbol
+    bits = 7
+    duration = 1
     channels = 16                   # array elements
     d0 = 0.05                       # element spacing, m
     c = 343                         # speed of wave
     n_path = 1                      # number of paths (LOS versus reflection)
-    n_sim = 1                       # number of simulation repitions
+    n_sim = 1                       # number of simulation repitionsps
     feedforward_taps = 30           # number of equalizer FF taps
     feedbackward_taps = 2           # number of equalizer FB taps
     alpha_rls = 0.9999              # alpha for filter
@@ -34,21 +36,22 @@ class uplink():
         self.fc = fc
         self.n_path = n_path
         self.n_sim = n_sim
-
         self.MSE_SNR = np.zeros((len(self.snr_list), n_sim))
         self.ERR_SNR = np.zeros_like(self.MSE_SNR)
 
-        self.preamble = np.array(sg.max_len_seq(bits)[0]) * 2 - 1.0
+        self.preamble = np.array(sg.max_len_seq(self.bits)[0]) * 2 - 1.0
+        self.tbits = np.array(sg.max_len_seq(self.bits)[0])
 
-        #self.return_symbols = 
         self.u = np.tile(self.preamble, self.n_repeat)
-        self.u = sg.resample_poly(self.u, self.ns, 1)
+        self.return_symbols = np.zeros((len(self.snr_list), n_sim, len(self.preamble)), dtype=complex)
+        self.u = sg.resample_poly(self.u, self.nsps, 1)
         self.s = np.real(self.u * np.exp(2j * np.pi * self.fc * np.arange(len(self.u)) / self.fs))
         self.s /= np.max(np.abs(self.s))
+        self.s = np.concatenate((np.zeros((int(self.fs*0.1),)), self.s, np.zeros((int(self.fs*0.1),))))
         pass
 
-    def rrcosfilter(self, N, alpha, Ts, Fs):
-        T_delta = 1 / float(Fs)
+    def rrcosfilter(self, N, alpha, Ts, fs):
+        T_delta = 1 / float(fs)
         time_idx = ((np.arange(N) - N / 2)) * T_delta
         sample_num = np.arange(N)
         h_rrc = np.zeros(N, dtype=float)
@@ -83,7 +86,10 @@ class uplink():
             SNR = np.power(10, snr/10)
             print(f"SNR={snr}dB")
             for i_sim in tqdm(range(self.n_sim)):
-                r_multichannel = rng.randn(self.duration * self.Fs, self.channels) / SNR #roundabout AWGN channel
+                r_multichannel = rng.randn(self.duration * self.fs, self.channels) / SNR #roundabout AWGN channel
+                r_simple = np.copy(self.s)
+                r_simple = r_simple + 0.3 * np.roll(r_simple, 300)
+                r_simple += 0.01 * np.random.randn(self.s.shape[0])
                 # receive the signal
                 for i in range(self.n_path):
                     x_tx, y_tx = self.x_tx_list[i], self.y_tx_list[i]
@@ -91,7 +97,7 @@ class uplink():
                     dx, dy = x_rx - x_tx, y_rx - y_tx
                     d_rx_tx = np.sqrt(dx**2 + dy**2)
                     delta_tau = d_rx_tx / self.c
-                    delay = np.round(delta_tau * self.Fs).astype(int) # sample delay
+                    delay = np.round(delta_tau * self.fs).astype(int) # sample delay
                     for j, delay_j in enumerate(delay):
                         # print(delay_j/4)
                         # reflection may need ironed out
@@ -101,7 +107,7 @@ class uplink():
                 # get S(theta) -- the angle of the source
                 r = r_multichannel[:,:self.channels] # received signal r passband
                 r_fft = np.fft.fft(r, axis=0)
-                freqs = np.fft.fftfreq(len(r[:, 0]), 1/self.Fs)
+                freqs = np.fft.fftfreq(len(r[:, 0]), 1/self.fs)
 
                 index = np.where((freqs >= self.fc-self.R/2) & (freqs < self.fc+self.R/2))[0]
                 N = len(index)
@@ -151,8 +157,11 @@ class uplink():
                 peaks_rx = 0
                 for i in range(K):
                     r = np.squeeze(r_multichannel_1[:, i])
-                    v = r * np.exp(-2 * np.pi * 1j * self.fc * np.arange(len(r))/self.Fs)
-                    fractional_spacing = self.nsps/self.df
+                    #r = r_simple
+                    v_orig = r * np.exp(-2j * np.pi * self.fc * np.arange(len(r)) /self.fs)
+                    v = np.copy(v_orig)
+                    v_orig = np.real(v_orig)
+                    #fractional_spacing = self.ns/self.df
                     _, rc_rx = self.rrcosfilter(16 * int(self.fs / self.R), 0.5, 1 / self.R, self.fs)
                     v_conv = np.convolve(v, rc_rx, "full")
                     # v /= np.sqrt(np.var(v))
@@ -161,7 +170,7 @@ class uplink():
                     else:
                         v = np.zeros_like(v)
                     if i == 0:
-                        xcorr_for_peaks = np.abs(sg.fftconvolve(sg.decimate(v, self.Ns), self.preamble[::-1].conj()))
+                        xcorr_for_peaks = np.abs(sg.fftconvolve(sg.resample_poly(v, self.nsps,1), self.preamble[::-1].conj()))
                         xcorr_for_peaks /= xcorr_for_peaks.max()
                         time_axis_xcorr = np.arange(0, len(xcorr_for_peaks)) / self.R * 1e3  # ms
                         peaks_rx, _ = sg.find_peaks(
@@ -170,7 +179,7 @@ class uplink():
                         # plt.figure()
                         # plt.plot(np.abs(xcorr_for_peaks))
                         # plt.show()
-                    v = v[peaks_rx[1] * self.Ns :]
+                    v = v#[peaks_rx[1] * self.nsps :] #this one
                     v_multichannel.append(v)
                 d = np.tile(self.preamble, 3)
 
@@ -178,12 +187,12 @@ class uplink():
                 for channel in range(K):
                     v = v_multichannel[channel]
                     v_rls[channel, 0:len(v)] = v
-
+            
                 for K_channels in K_list:
                     d_hat, mse, n_err, n_training = self.processing(v_rls, d, K_channels, bf=True)
                     self.MSE_SNR[i_snr, i_sim] = mse
                     self.ERR_SNR[i_snr, i_sim] = n_err
-                    self.return_symbols[i_snr, i_sim, :] = d_hat
+                    self.return_symbols[i_snr, i_sim, :] = d_hat[0:len(self.preamble)]
 
                 # now transmit based on theta
                 theta = theta_m[0]
@@ -195,7 +204,7 @@ class uplink():
         self.mean_symbols = np.mean(self.return_symbols, axis=1)
         self.mean_mse = np.mean(self.MSE_SNR, axis=1)
         self.mean_err = np.mean(self.ERR_SNR, axis=1)
-        self.mean_v = np.mean(v_rls, axis=0)
+        self.mean_v = v_rls.flatten()
         return theta, wk, S_theta
 
     def processing(self, v_rls, d, K=1, bf=True):
@@ -205,7 +214,7 @@ class uplink():
         # v_rls = v_rls[random.sample(range(0, 12), K), :]
         delta = 0.001
         Nplus = 3
-        n_training = int(4 * (self.feedforward_taps + self.feedbackward_taps) / self.Ns)
+        n_training = int(4 * (self.feedforward_taps + self.feedbackward_taps) / self.nsps)
         fractional_spacing = 4
         K_1 = 0.0000
         K_2 = K_1 / 10
@@ -227,10 +236,10 @@ class uplink():
         cumsum_phi = 0.0
         sse = 0.0
         for i in np.arange(len(d_rls) - 1, dtype=int):
-            nb = (i) * self.Ns + (Nplus - 1) * self.Ns - 1
+            nb = (i) * self.nsps + (Nplus - 1) * self.nsps - 1
             xn = v_rls[
-                :, int(nb + np.ceil(self.Ns / fractional_spacing / 2)) : int(nb + self.Ns)
-                + 1 : int(self.Ns / fractional_spacing)
+                :, int(nb + np.ceil(self.nsps / fractional_spacing / 2)) : int(nb + self.nsps)
+                + 1 : int(self.nsps / fractional_spacing)
             ]
             for j in range(K):
                 xn[j,:] *= np.exp(-1j * theta[i,j])
@@ -247,7 +256,7 @@ class uplink():
 
             if i > n_training:
                 # d_tilde[i] = slicing(d_hat[i], M)
-                d_tilde[i] = self.modem.modulate(np.array(self.modem.demodulate(np.array(d_hat[i], ndmin=1), 'hard'), dtype=int))
+                d_tilde[i] = int((np.array(d_hat[i])+1)/2)
             else:
                 d_tilde[i] = d_rls[i]
             e[i] = d_tilde[i] - d_hat[i]

@@ -12,6 +12,7 @@ if __name__ == "__main__":
 
     # generate the signal to be transmitted
     d = np.array(sg.max_len_seq(bits)[0]) * 2 - 1.0
+    tbits = np.array(sg.max_len_seq(bits)[0])
     u = np.tile(d, rep)
     u = sg.resample_poly(u, ns, 1)
     s = np.real(u * np.exp(2j * np.pi * fc * np.arange(len(u)) / fs))
@@ -27,6 +28,8 @@ if __name__ == "__main__":
     v = r * np.exp(-2j * np.pi * fc * np.arange(len(r)) / fs)
     xcor = sg.fftconvolve(v, sg.resample_poly(d[::-1].conj(), ns, 1))
 
+    print(len(v))
+    print(len(sg.resample_poly(d[::-1].conj(), ns, 1)))
     # plot
     plt.plot(np.abs(xcor))
     plt.xlim([np.argmax(xcor) - 100, np.argmax(xcor) + 500])
