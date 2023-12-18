@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import sounddevice as sd
 from tqdm import tqdm
 
-class uplink():
+class downlink():
 
     fc = 15e3                       # carrier frequency
     fs = 48000                      # sampling frequency
@@ -31,14 +31,16 @@ class uplink():
     y_tx_list = np.array([1])           # node y coordinates
 
     snr_list = [10] #np.arange(10, 15, 1) #changed from 15
-    m_idx = 0                           # antenna index
 
-    def __init__(self, fc, n_path, n_sim) -> None:
+    def __init__(self, fc, n_path, n_sim, theta, wk, apply_bf = True) -> None:
         self.fc = fc
         self.n_path = n_path
         self.n_sim = n_sim
         self.MSE_SNR = np.zeros((len(self.snr_list), n_sim))
         self.ERR_SNR = np.zeros_like(self.MSE_SNR)
+        self.theta = theta
+        self.wk = wk
+        self.apply_bf = apply_bf
 
         self.preamble = np.array(sg.max_len_seq(self.bits)[0]) * 2 - 1.0
         self.tbits = np.array(sg.max_len_seq(self.bits)[0])
@@ -47,9 +49,21 @@ class uplink():
         self.return_symbols = np.zeros((len(self.snr_list), n_sim, len(self.preamble)), dtype=complex)
         self.u = sg.resample_poly(self.u, self.nsps, 1)
         self.s = np.real(self.u * np.exp(2j * np.pi * self.fc * np.arange(len(self.u)) / self.fs))
+        self.steering_vec = self.calc_steering_vec(theta, wk)
+        self.s = np.dot(np.reshape(self.steering_vec,[-1,1]),np.reshape(self.s,[1,-1]))
         self.s /= np.max(np.abs(self.s))
-        self.s = np.concatenate((np.zeros((int(self.fs*0.1),)), self.s, np.zeros((int(self.fs*0.1),))))
+        self.s_tx = np.zeros((self.channels,int(self.fs*0.2)+len(self.s[1,:])))
+        for i in range(self.channels):
+            self.s_tx[i,:] = np.concatenate((np.zeros((int(self.fs*0.1),)), self.s[i,:], np.zeros((int(self.fs*0.1),))))
         pass
+
+    def calc_steering_vec(self, theta, wk):
+        if self.apply_bf == True:
+            steering_vec = np.exp(-1j*2*np.pi*np.sin(theta)*np.arange(self.channels)*self.d0)
+            steering_vec = wk
+        elif self.apply_bf == False:
+            steering_vec = np.ones(self.channels)/self.channels
+        return steering_vec
 
     def rrcosfilter(self, N, alpha, Ts, fs):
         T_delta = 1 / float(fs)
@@ -80,83 +94,38 @@ class uplink():
         return time_idx, h_rrc
 
     def simulation(self):
-        x_rx = np.arange(0, self.d0*self.channels, self.d0)
-        y_rx = np.zeros_like(x_rx)
+        x_rx = np.array([0])
+        y_rx = np.array([1])
         rng = np.random.RandomState(2021)
         for i_snr, snr in enumerate(self.snr_list):
             SNR = np.power(10, snr/10)
             print(f"SNR={snr}dB")
             for i_sim in tqdm(range(self.n_sim)):
-                r_multichannel = rng.randn(self.duration * self.fs, self.channels) / SNR #roundabout AWGN channel
-                #r_multichannel = np.zeros((self.duration*self.fs,self.channels))
-                r_simple = np.copy(self.s)
-                r_simple = r_simple + 0.3 * np.roll(r_simple, 300)
-                r_simple += 0.01 * np.random.randn(self.s.shape[0])
+                r_singlechannel = rng.randn(self.duration * self.fs) / SNR
+                r_singlechannel = r_singlechannel.astype('complex128')
                 # receive the signal
                 for i in range(self.n_path):
                     x_tx, y_tx = self.x_tx_list[i], self.y_tx_list[i]
-                    reflection = self.reflection_list[i] #delay and sum not scale
+                    reflection = self.reflection_list[i]
                     dx, dy = x_rx - x_tx, y_rx - y_tx
                     d_rx_tx = np.sqrt(dx**2 + dy**2)
                     delta_tau = d_rx_tx / self.c
-                    delay = np.round(delta_tau * self.fs).astype(int) # sample delay
+                    delay = np.round(delta_tau * self.fs).astype(int)
                     for j, delay_j in enumerate(delay):
                         # print(delay_j/4)
-                        # reflection may need ironed out
-                        #   this one-liner is too flashy: must introduce time-delay from reflection, sum, and impart to array elements
-                        r_multichannel[delay_j:delay_j+len(self.s), j] += reflection * self.s
+                        r_singlechannel[delay_j:delay_j+len(self.s_tx[:,1])] += self.s_tx[:,j] * reflection #(eliminated for now)
 
                 # get S(theta) -- the angle of the source
-                r = r_multichannel #[:,:self.channels] # received signal r passband
-                r_keep = np.copy(r_multichannel[:,self.m_idx])
+                r = r_singlechannel #[:,:self.channels] # received signal r passband
+                r_keep = np.copy(r_singlechannel)
 
                 r_fft = np.fft.fft(r, axis=0)
-                freqs = np.fft.fftfreq(len(r[:, 0]), 1/self.fs)
-
-                index = np.where((freqs >= self.fc-self.R/2) & (freqs < self.fc+self.R/2))[0]
-                N = len(index)
-                fk = freqs[index]       
-                yk = r_fft[index, :]    # N*M
-
-                S_theta = np.arange(self.theta_start, self.theta_end, 1,dtype="complex128")
-                N_theta = len(S_theta)
-                theta_start = np.deg2rad(self.theta_start)
-                theta_end = np.deg2rad(self.theta_end)
-                theta_list = np.linspace(theta_start, theta_end, N_theta)
-
-                for n_theta, theta in enumerate(theta_list):
-                    d_tau = np.sin(theta) * self.d0/self.c
-                    S_M = np.exp(-2j * np.pi * d_tau * np.dot(fk.reshape(N, 1), np.arange(self.channels).reshape(1, self.channels)))    # N*M
-                    SMxYk = np.einsum('ij,ji->i', S_M.conj(), yk.T,dtype="complex128")
-                    S_theta[n_theta] = np.real(np.vdot(SMxYk, SMxYk))
-
-                S_theta_peaks_idx, _ = sg.find_peaks(S_theta, height=0)
-                S_theta_peaks = S_theta[S_theta_peaks_idx] # plot and see
-                theta_m_idx = np.argsort(S_theta_peaks)
-                theta_m = theta_list[S_theta_peaks_idx[theta_m_idx[-self.n_path:]]]
-
-                # do beamforming
-                y_tilde = np.zeros((N,self.n_path), dtype=complex)
-                for k in range(N):
-                    d_tau_m = np.sin(theta_m) * self.d0/self.c
-                    Sk = np.exp(-2j * np.pi * fk[k] * np.arange(self.channels).reshape(self.channels, 1) @ d_tau_m.reshape(1, self.n_path))
-                    for i in range(self.n_path):
-                        e_pu = np.zeros((self.n_path, 1))
-                        e_pu[i, 0] = 1
-                        wk = Sk @ np.linalg.inv(Sk.conj().T @ Sk) @ e_pu
-                        y_tilde[k, i] = wk.conj().T @ yk[k, :].T
-
-                y_fft = np.zeros((len(r[:, 0]), self.n_path), complex)
-                y_fft[index, :] = y_tilde
-                y = np.fft.ifft(y_fft, axis=0)
-
-                # processing the signal we get from bf
-                r_multichannel_1 = y
-
+                freqs = np.fft.fftfreq(len(r), 1/self.fs)
+                r_singlechannel_1 = r_singlechannel #it's delay corrected...
                 K_list = [self.n_path]
                 K = self.n_path
                 if K == 1:
-                    r_multichannel_1 = r_multichannel_1.reshape(len(r_multichannel_1), 1)
+                    r_singlechannel_1 = r_singlechannel_1.reshape(len(r_singlechannel_1), 1)
                 v_multichannel = []
                 peaks_rx = 0
                 for i in range(K):
@@ -198,7 +167,6 @@ class uplink():
                     self.return_symbols[i_snr, i_sim, :] = d_hat[0:len(self.preamble)]
 
                 # now transmit based on theta
-                theta = theta_m[0]
                 #A = np.exp(-1j*2*np.pi*np.sind(theta).T *self.d0*np.arange(0,self.M-1)).T 
                 # data portion -> received signal? or just fabricate
                 #F = v_rls # ?
@@ -208,7 +176,6 @@ class uplink():
         self.mean_mse = np.mean(self.MSE_SNR, axis=1)
         self.mean_err = np.mean(self.ERR_SNR, axis=1)
         self.mean_v = v_orig
-        return theta, wk, S_theta
 
     def processing(self, v_rls, d, K=1, bf=True):
         channel_list = {1:[0], 2:[0,11], 3:[0,6,11], 4:[0,4,7,11], 8:[0,1,3,4,6,7,9,11], 6:[0,2,4,6,8,10]}

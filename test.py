@@ -17,17 +17,24 @@ if __name__ == "__main__":
     u = sg.resample_poly(u, ns, 1)
     s = np.real(u * np.exp(2j * np.pi * fc * np.arange(len(u)) / fs))
     s /= np.max(np.abs(s))
-    s = np.concatenate((np.zeros((int(fs*0.1),)), s, np.zeros((int(fs*0.1),))))
+    #s = np.concatenate((np.zeros((int(fs*0.1),)), s, np.zeros((int(fs*0.1),))))
 
     # pass through the channel
     r = np.copy(s)
     r = r + 0.3 * np.roll(r, 300)
     r += 0.01 * np.random.randn(s.shape[0])
 
+    # add reflection metric
+    r_reflect = 0.5*np.copy(s)
+    r_reflect = r_reflect + 0.3 * np.roll(r, 600)
+    r_reflect += 0.01 * np.random.randn(s.shape[0])
+
+    r += r_reflect
+
     # xcorr
     v = r * np.exp(-2j * np.pi * fc * np.arange(len(r)) / fs)
-    xcor = sg.fftconvolve(v, sg.resample_poly(d[::-1].conj(), ns, 1))
-
+    xcor = sg.fftconvolve(v,sg.resample_poly(d[::-1].conj(),ns,1),'full')
+ 
     print(len(v))
     print(len(sg.resample_poly(d[::-1].conj(), ns, 1)))
     # plot
