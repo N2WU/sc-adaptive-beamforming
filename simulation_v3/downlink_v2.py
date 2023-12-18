@@ -115,12 +115,8 @@ class downlink():
                         # print(delay_j/4)
                         r_singlechannel[delay_j:delay_j+len(self.s_tx[:,1])] += self.s_tx[:,j] * reflection #(eliminated for now)
 
-                # get S(theta) -- the angle of the source
                 r = r_singlechannel #[:,:self.channels] # received signal r passband
                 r_keep = np.copy(r_singlechannel)
-
-                r_fft = np.fft.fft(r, axis=0)
-                freqs = np.fft.fftfreq(len(r), 1/self.fs)
                 r_singlechannel_1 = r_singlechannel #it's delay corrected...
                 K_list = [self.n_path]
                 K = self.n_path
@@ -148,9 +144,6 @@ class downlink():
                         peaks_rx, _ = sg.find_peaks(
                             xcorr_for_peaks, height=0.2, distance=len(self.preamble) - 100
                         )
-                        # plt.figure()
-                        # plt.plot(np.abs(xcorr_for_peaks))
-                        # plt.show()
                     v = v[peaks_rx[1] * self.nsps :] #this one
                     v_multichannel.append(v)
                 d = np.tile(self.preamble, 3)
@@ -178,10 +171,10 @@ class downlink():
         self.mean_v = v_orig
 
     def processing(self, v_rls, d, K=1, bf=True):
+        #rebuild for linear equalizer
         channel_list = {1:[0], 2:[0,11], 3:[0,6,11], 4:[0,4,7,11], 8:[0,1,3,4,6,7,9,11], 6:[0,2,4,6,8,10]}
         if bf == False:
             v_rls = v_rls[channel_list[K], :]
-        # v_rls = v_rls[random.sample(range(0, 12), K), :]
         delta = 0.001
         Nplus = 3
         n_training = int(4 * (self.feedforward_taps + self.feedbackward_taps) / self.nsps)
