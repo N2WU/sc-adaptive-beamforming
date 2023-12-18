@@ -21,7 +21,7 @@ class uplink():
     n_sim = 1                       # number of simulation repitionsps
     feedforward_taps = 30           # number of equalizer FF taps
     feedbackward_taps = 2           # number of equalizer FB taps
-    alpha_rls = 0.9999              # alpha for filter
+    alpha_rls = 0.5                 # alpha for filter
 
     theta_start = -90
     theta_end = 90
