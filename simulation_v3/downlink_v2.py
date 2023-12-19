@@ -14,14 +14,11 @@ class downlink():
     nsps = int(fs/R)                # samples per symbol
     bits = 7
     duration = 1
-    channels = 16                   # array elements
+    channels = 12                   # array elements
     d0 = 0.05                       # element spacing, m
     c = 343                         # speed of wave
     n_path = 1                      # number of paths (LOS versus reflection)
     n_sim = 1                       # number of simulation repitionsps
-    feedforward_taps = 30           # number of equalizer FF taps
-    feedbackward_taps = 2           # number of equalizer FB taps
-    alpha_rls = 0.9999              # alpha for filter
 
     theta_start = -90
     theta_end = 90
@@ -30,7 +27,7 @@ class downlink():
     x_tx_list = np.array([0])           # node x coordinates
     y_tx_list = np.array([1])           # node y coordinates
 
-    snr_list = [10] #np.arange(10, 15, 1) #changed from 15
+    snr_list = [5] #np.arange(10, 15, 1) #changed from 15
 
     def __init__(self, fc, n_path, n_sim, theta, wk, apply_bf = True) -> None:
         self.fc = fc
@@ -50,17 +47,16 @@ class downlink():
         self.u = sg.resample_poly(self.u, self.nsps, 1)
         self.s = np.real(self.u * np.exp(2j * np.pi * self.fc * np.arange(len(self.u)) / self.fs))
         self.steering_vec = self.calc_steering_vec(theta, wk)
-        self.s = np.dot(np.reshape(self.steering_vec,[-1,1]),np.reshape(self.s,[1,-1]))
         self.s /= np.max(np.abs(self.s))
-        self.s_tx = np.zeros((self.channels,int(self.fs*0.2)+len(self.s[1,:])))
-        for i in range(self.channels):
-            self.s_tx[i,:] = np.concatenate((np.zeros((int(self.fs*0.1),)), self.s[i,:], np.zeros((int(self.fs*0.1),))))
+        self.s_tx = np.dot(np.reshape(self.steering_vec,[-1,1]),np.reshape(self.s,[1,-1]))
+        print(np.shape(self.s_tx))
         pass
 
     def calc_steering_vec(self, theta, wk):
+        theta = np.deg2rad(76)
         if self.apply_bf == True:
             steering_vec = np.exp(-1j*2*np.pi*np.sin(theta)*np.arange(self.channels)*self.d0)
-            steering_vec = wk
+            #steering_vec = wk
         elif self.apply_bf == False:
             steering_vec = np.ones(self.channels)/self.channels
         return steering_vec
@@ -101,7 +97,7 @@ class downlink():
             SNR = np.power(10, snr/10)
             print(f"SNR={snr}dB")
             for i_sim in tqdm(range(self.n_sim)):
-                r_singlechannel = rng.randn(self.duration * self.fs) / SNR
+                r_singlechannel = rng.randn(int((0.2 + self.duration)*self.fs)) / SNR
                 r_singlechannel = r_singlechannel.astype('complex128')
                 # receive the signal
                 for i in range(self.n_path):
@@ -111,11 +107,11 @@ class downlink():
                     d_rx_tx = np.sqrt(dx**2 + dy**2)
                     delta_tau = d_rx_tx / self.c
                     delay = np.round(delta_tau * self.fs).astype(int)
-                    for j, delay_j in enumerate(delay):
-                        # print(delay_j/4)
-                        r_singlechannel[delay_j:delay_j+len(self.s_tx[:,1])] += self.s_tx[:,j] * reflection #(eliminated for now)
+                    for j in range(len(delay)):
+                        # r[delay[i]:delay[i]+len(s)] += s_multi[i,:] * reflection[i]
+                        r_singlechannel[delay[j]:delay[j]+len(self.s)] += self.s_tx[j,:] * reflection #(eliminated for now)
 
-                r = r_singlechannel #[:,:self.channels] # received signal r passband
+                r = r_singlechannel/np.max(np.abs(r_singlechannel)) #[:,:self.channels] # received signal r passband
                 r_keep = np.copy(r_singlechannel)
                 r_singlechannel_1 = r_singlechannel #it's delay corrected...
                 K_list = [self.n_path]
@@ -153,18 +149,12 @@ class downlink():
                     v = v_multichannel[channel]
                     v_rls[channel, 0:len(v)] = v
             
-                for K_channels in K_list:
-                    d_hat, mse, n_err, n_training = self.processing(v_rls, d, K_channels, bf=True)
-                    self.MSE_SNR[i_snr, i_sim] = mse
-                    self.ERR_SNR[i_snr, i_sim] = n_err
-                    self.return_symbols[i_snr, i_sim, :] = d_hat[0:len(self.preamble)]
+                #for K_channels in K_list:
+                #    d_hat, mse, n_err, n_training = self.processing(v_rls, d, K_channels, bf=True)
+                #    self.MSE_SNR[i_snr, i_sim] = mse
+                #    self.ERR_SNR[i_snr, i_sim] = n_err
+                #    self.return_symbols[i_snr, i_sim, :] = d_hat[0:len(self.preamble)]
 
-                # now transmit based on theta
-                #A = np.exp(-1j*2*np.pi*np.sind(theta).T *self.d0*np.arange(0,self.M-1)).T 
-                # data portion -> received signal? or just fabricate
-                #F = v_rls # ?
-                #X = A*F
-                # transmit(X)
         self.mean_symbols = np.mean(self.return_symbols, axis=1)
         self.mean_mse = np.mean(self.MSE_SNR, axis=1)
         self.mean_err = np.mean(self.ERR_SNR, axis=1)
