@@ -3,18 +3,22 @@ import scipy.signal as sg
 import matplotlib.pyplot as plt
 
 
-def process(v,d_upsampled):
-    #xcor = sg.fftconvolve(v,d_upsampled[::-1].conj(),'full')
-    scale_factor = 0.1
-    K = 4
-    # is k length of training sequence?
-    I = d_upsampled
-    I_est = v
-    for k in range(K):
-        sigma = I[k] - I_est[k]
-        xcor = sg.fftconvolve(sigma,I[k-j].conj())
-        for j in range(len(np.arange(2*K+1)-K)):
-            c[j] = c[j]+scale_factor*xcor
+def process(v,x):
+    #k = np.arange(len(v))
+    L = 2 # training length
+    i = np.arange(L)
+    #x = np.tile(d_upsampled,round(len(v)/len(d_upsampled)))
+    x_est = np.zeros_like(v)
+    h = np.zeros(L)
+    h = v[0:L]/x[0:L]
+    x_est[0] = x[0] # training length of 1, basically
+    for k in range(1,len(v)-1):
+        x_est[k] = (v[k]-h[1]*x_est[k-1])/h[0]
+        if x_est[k] < 0:
+            x_est[k] = 1
+        else:
+            x_est[k] = -1
+    return x_est
 
 if __name__ == "__main__":
     bits = 7
@@ -43,7 +47,6 @@ if __name__ == "__main__":
     # pass through the channel
     delay = 100*(1+np.arange(n_tx))
     r = np.random.randn(s_pad.shape[0]) / SNR
-    print(np.shape(s_multi))
     for i in range(n_tx):
         r[delay[i]:delay[i]+len(s)] += s_multi[i,:] * reflection[i]
 
@@ -51,8 +54,11 @@ if __name__ == "__main__":
     v = r * np.exp(-2j * np.pi * fc * np.arange(len(r)) / fs)
     xcor = sg.fftconvolve(v,sg.resample_poly(d[::-1].conj(),ns,1),'full')
     d_upsampled = sg.resample_poly(d,ns,1)
-    d_hat = process(v,d_upsampled)
- 
+    x = np.tile(d_upsampled,round(len(v)/len(d_upsampled)))
+    d_hat = process(v,x)
+    mse = 10 * np.log10(np.mean(np.abs(x[0:len(d_hat)] - d_hat) ** 2))
+    print("MSE is: ", mse)
+
     # plot
     plt.plot(np.abs(xcor))
     plt.xlim([np.argmax(xcor) - 100, np.argmax(xcor) + 500])
