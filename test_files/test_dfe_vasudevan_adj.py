@@ -3,7 +3,7 @@ import numpy as np
 
 # Parameters
 training_len = 10**5
-snr_dB = 30
+snr_dB = 10
 ff_filter_len = 20
 fb_filter_len = 8
 data_len = 10**6
@@ -16,7 +16,7 @@ noise_var = 1 / (2 * snr)
 training_a = np.random.randint(0, 2, training_len)
 training_seq = 1 - 2 * training_a
 
-fade_chan = [0.407, 0.815, 0.407]
+fade_chan = [1, 0.5]#[0.407, 0.815, 0.407]
 fade_chan = fade_chan / np.linalg.norm(fade_chan)
 chan_len = len(fade_chan)
 
