@@ -72,7 +72,7 @@ fb_filter_len = 8
 R = 3000
 fs = 48000
 ns = fs / R
-fc = 15e3
+fc = 16e3
 
 d = np.array(sg.max_len_seq(bits)[0]) * 2 - 1.0
 # Training phase
@@ -109,15 +109,12 @@ chan_op = chan_op_pb * np.exp(-2j * np.pi * fc * np.arange(len(chan_op_pb)) / fs
 
 dec_sym = dfe(chan_op,ff_filter,fb_filter,ff_filter_len,fb_filter_len)
 
-# Demapping symbols back to bits
-# dec_a = dec_seq < 0
-
 # MSE
 data_sym_up = sg.resample_poly(data_sym,ns,1)
 data_sym_up = (data_sym_up > 0)*2 - 1
-mse = 10 * np.log10(np.mean(np.abs(data_sym_up[:len(dec_sym)] - dec_sym) ** 2))
+mse = 10 * np.log10(np.mean(np.abs(data_sym[:len(dec_sym)] - dec_sym) ** 2))
 print(f"MSE: {mse}")
 
-print(f"data_sym: {data_sym}")
-print(f"data_sym_up: {data_sym_up}")
-print(f"dec_sym: {dec_sym}")
+#print(f"data_sym: {data_sym}")
+#print(f"len: {len(data_sym)-len(dec_sym)}")
+#print(f"dec_sym: {dec_sym}")
