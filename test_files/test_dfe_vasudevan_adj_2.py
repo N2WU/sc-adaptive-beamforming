@@ -111,20 +111,17 @@ _, rc_rx = rrcosfilter(16 * int(fs / R), 0.5, 1 / R, fs)
 training_sym = np.tile(d, training_rep)
 # upsample
 training_sym_up = sg.resample_poly(training_sym,ns,1)
-# filter
-training_sym_up = sg.convolve(training_sym_up, rc_tx, mode="same")
+
 training_seq = np.real(training_sym_up * np.exp(2j * np.pi * fc * np.arange(len(training_sym_up)) / fs))
 training_seq /= np.max(np.abs(training_seq))
-# training_seq = training_sym
+
 # Data transmission phase
 data_sym = np.tile(d, rep)
 # upsample
 data_sym_up = sg.resample_poly(data_sym,ns,1)
-# filter
-data_sym_up = sg.convolve(data_sym_up, rc_tx, mode="same")
+
 data_seq = np.real(data_sym_up * np.exp(2j * np.pi * fc * np.arange(len(data_sym_up)) / fs))
 data_seq /= np.max(np.abs(data_seq))
-# data_seq = data_sym
 training_len = len(training_seq)
 data_len = len(data_seq)
 
@@ -138,35 +135,24 @@ chan_len = len(fade_chan)
 # TX
 chan_op_pb = transmit(training_seq,fade_chan,snr)
 chan_op = chan_op_pb * np.exp(-2j * np.pi * fc * np.arange(len(chan_op_pb)) / fs)
-# chan_op = chan_op_pb
-# decimate
-chan_op_d = sg.decimate(chan_op, df)
-# filter
-chan_op = sg.convolve(chan_op_d, rc_rx, mode="same")
 
 # LMS update of taps
-ff_filter,fb_filter = filt_init(chan_op,training_seq,ff_filter_len,fb_filter_len,chan_len) # maybe it matters where this is placed?
+ff_filter,fb_filter = filt_init(chan_op,training_sym_up,ff_filter_len,fb_filter_len,chan_len) # maybe it matters where this is placed?
 
 chan_op_pb = transmit(data_seq,fade_chan,snr)
 chan_op = chan_op_pb * np.exp(-2j * np.pi * fc * np.arange(len(chan_op_pb)) / fs)
-# chan_op = chan_op_pb
-# decimate
-chan_op_d = sg.decimate(chan_op, df)
-# filter
-chan_op = np.convolve(chan_op_d, rc_rx, "full")
+
 dec_sym = dfe(chan_op,ff_filter,fb_filter,ff_filter_len,fb_filter_len)
-dec_sym = sg.decimate(dec_sym,10)
+
 # MSE
-data_sym_up = sg.resample_poly(data_sym,ns,1)
-data_sym_up = (data_sym_up > 0)*2 - 1
-mse = np.zeros(abs(len(data_sym_up)-len(dec_sym)))
+dec_sym = (dec_sym > 0)*2 - 1
+data_sym = (data_sym_up > 0)*2 - 1
+
+mse = np.zeros(abs(len(data_sym)-len(dec_sym)))
 for k in range(abs(len(data_sym)-len(dec_sym))):
-    mse[k] = 10 * np.log10(np.mean(np.abs(data_sym - dec_sym[k:k+len(data_sym)]) ** 2))
+    mse[k] = 10 * np.log10(np.mean(np.abs(data_sym [k:k+len(dec_sym)]- dec_sym) ** 2))
 
 print(f"Lowest MSE: {np.amin(mse)}")
 
 print(f"data_sym_len: {len(data_sym)}")
-print(f"data_sym_up_len: {len(data_sym_up)}")
 print(f"dec_sym_len: {len(dec_sym)}")
-#print(f"len: {len(data_sym)-len(dec_sym)}")
-#print(f"dec_sym: {dec_sym}")
