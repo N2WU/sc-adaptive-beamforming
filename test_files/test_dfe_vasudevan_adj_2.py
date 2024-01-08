@@ -154,18 +154,19 @@ chan_op = chan_op_pb * np.exp(-2j * np.pi * fc * np.arange(len(chan_op_pb)) / fs
 chan_op_d = sg.decimate(chan_op, df)
 # filter
 chan_op = np.convolve(chan_op_d, rc_rx, "full")
-
 dec_sym = dfe(chan_op,ff_filter,fb_filter,ff_filter_len,fb_filter_len)
-
+dec_sym = sg.decimate(dec_sym,10)
 # MSE
 data_sym_up = sg.resample_poly(data_sym,ns,1)
 data_sym_up = (data_sym_up > 0)*2 - 1
 mse = np.zeros(abs(len(data_sym_up)-len(dec_sym)))
-for k in range(abs(len(data_sym_up)-len(dec_sym))):
-    mse[k] = 10 * np.log10(np.mean(np.abs(data_sym_up - dec_sym[k:k+len(data_sym_up)]) ** 2))
+for k in range(abs(len(data_sym)-len(dec_sym))):
+    mse[k] = 10 * np.log10(np.mean(np.abs(data_sym - dec_sym[k:k+len(data_sym)]) ** 2))
 
 print(f"Lowest MSE: {np.amin(mse)}")
 
-#print(f"data_sym: {data_sym}")
+print(f"data_sym_len: {len(data_sym)}")
+print(f"data_sym_up_len: {len(data_sym_up)}")
+print(f"dec_sym_len: {len(dec_sym)}")
 #print(f"len: {len(data_sym)-len(dec_sym)}")
 #print(f"dec_sym: {dec_sym}")
