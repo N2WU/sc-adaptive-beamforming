@@ -156,3 +156,8 @@ print(f"Lowest MSE: {np.amin(mse)}")
 
 print(f"data_sym_len: {len(data_sym)}")
 print(f"dec_sym_len: {len(dec_sym)}")
+
+xcor = sg.fftconvolve(chan_op, sg.resample_poly(data_sym_up[::-1].conj(), ns, 1))
+peaks_rx, _ = sg.find_peaks(xcor, distance=len(sg.resample_poly(d,ns,1)))
+print(np.argmax(peaks_rx))
+print(10 * np.log10(np.mean(np.abs(data_sym - dec_sym[np.argmax(peaks_rx):np.argmax(peaks_rx)+len(data_sym)]) ** 2)))
