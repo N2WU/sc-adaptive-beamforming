@@ -142,22 +142,35 @@ ff_filter,fb_filter = filt_init(chan_op,training_sym_up,ff_filter_len,fb_filter_
 chan_op_pb = transmit(data_seq,fade_chan,snr)
 chan_op = chan_op_pb * np.exp(-2j * np.pi * fc * np.arange(len(chan_op_pb)) / fs)
 
-dec_sym = dfe(chan_op,ff_filter,fb_filter,ff_filter_len,fb_filter_len)
-
-# MSE
-dec_sym = (dec_sym > 0)*2 - 1
-data_sym = (data_sym_up > 0)*2 - 1
-
-mse = np.zeros(abs(len(data_sym)-len(dec_sym)))
-for k in range(abs(len(data_sym)-len(dec_sym))):
-    mse[k] = 10 * np.log10(np.mean(np.abs(data_sym [k:k+len(dec_sym)]- dec_sym) ** 2))
-
-print(f"Lowest MSE: {np.amin(mse)}")
-
-print(f"data_sym_len: {len(data_sym)}")
-print(f"dec_sym_len: {len(dec_sym)}")
-
 xcor = sg.fftconvolve(chan_op, sg.resample_poly(data_sym_up[::-1].conj(), ns, 1))
-peaks_rx, _ = sg.find_peaks(xcor, distance=len(sg.resample_poly(d,ns,1)))
-print(np.argmax(peaks_rx))
-print(10 * np.log10(np.mean(np.abs(data_sym - dec_sym[np.argmax(peaks_rx):np.argmax(peaks_rx)+len(data_sym)]) ** 2)))
+#peaks_rx, _ = sg.find_peaks(xcor, distance=len(sg.resample_poly(d,ns,1)))
+peaks_rx, _ = sg.find_peaks(xcor, height=0.2, distance=len(d) - 100)
+#peaks_rx, _ = sg.find_peaks(xcorr_for_peaks, height=0.2, distance=len(self.preamble) - 100)
+# v = v[peaks_rx[1] * self.Ns :]
+
+possible_mse = np.zeros(len(peaks_rx))
+for i in range(len(peaks_rx)):
+    chan_op = chan_op[int(peaks_rx[i]*ns):]
+    try:
+        dec_sym = dfe(chan_op,ff_filter,fb_filter,ff_filter_len,fb_filter_len)
+    except:
+        dec_sym = dec_sym
+        #print(f"whoops @ i= {i}")
+
+    # MSE
+    dec_sym = (dec_sym > 0)*2 - 1
+    data_sym = (data_sym_up > 0)*2 - 1
+
+    mse = np.zeros(abs(len(data_sym)-len(dec_sym)))
+    for k in range(abs(len(data_sym)-len(dec_sym))):
+        mse[k] = 10 * np.log10(np.mean(np.abs(data_sym [k:k+len(dec_sym)]- dec_sym) ** 2))
+
+    #print(f"Lowest MSE: {np.amin(mse)}")
+    possible_mse[i] = np.amin(mse)
+
+print(f"Lowest Lowest MSE: {np.amin(possible_mse)} @ ind={np.argmin(possible_mse)}")
+#print(f"data_sym_len: {len(data_sym)}")
+#print(f"dec_sym_len: {len(dec_sym)}")
+
+#print(np.argmax(peaks_rx))
+
