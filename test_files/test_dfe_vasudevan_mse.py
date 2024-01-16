@@ -1,5 +1,6 @@
 import numpy as np
 import scipy.signal as sg
+import matplotlib.pyplot as plt
 # https://github.com/vineel49/dfe/blob/master/run_me_bpsk.m
 
 # functions
@@ -94,7 +95,7 @@ def dfe(v,ff,fb,ff_len,fb_len):
 bits = 7
 rep = 16
 training_rep = 4
-snr_dB = 10
+snr_dB = np.arange(-10,20)
 ff_filter_len = 20
 fb_filter_len = 8
 R = 3000
@@ -105,76 +106,42 @@ uf = int(fs / R)
 df = int(uf / ns)
 
 d = np.array(sg.max_len_seq(bits)[0]) * 2 - 1.0
-_, rc_tx = rrcosfilter(16 * int(1 / R * fs), 0.5, 1 / R, fs)
-_, rc_rx = rrcosfilter(16 * int(fs / R), 0.5, 1 / R, fs)
 # Training phase
 training_sym = np.tile(d, training_rep)
-# upsample
-training_sym_up = sg.resample_poly(training_sym,ns,1)
-
-training_seq = np.real(training_sym_up * np.exp(2j * np.pi * fc * np.arange(len(training_sym_up)) / fs))
+training_seq = training_sym
 training_seq /= np.max(np.abs(training_seq))
 
 # Data transmission phase
 data_sym = np.tile(d, rep)
-# upsample
-data_sym_up = sg.resample_poly(data_sym,ns,1)
-
-data_seq = np.real(data_sym_up * np.exp(2j * np.pi * fc * np.arange(len(data_sym_up)) / fs))
+data_seq = data_sym
 data_seq /= np.max(np.abs(data_seq))
+
 training_len = len(training_seq)
 data_len = len(data_seq)
-
-# SNR parameters
-snr = 10**(0.1 * snr_dB)
 
 fade_chan = [1, 0.5]#[0.407, 0.815, 0.407]
 fade_chan = fade_chan / np.linalg.norm(fade_chan)
 chan_len = len(fade_chan)
 
-# TX
-chan_op_pb = transmit(training_seq,fade_chan,snr)
-chan_op = chan_op_pb * np.exp(-2j * np.pi * fc * np.arange(len(chan_op_pb)) / fs)
+mse = np.zeros(len(snr_dB))
 
-# LMS update of taps
-ff_filter,fb_filter = filt_init(chan_op,training_sym_up,ff_filter_len,fb_filter_len,chan_len) # maybe it matters where this is placed?
-
-#s = np.concatenate((np.zeros((int(fs*0.1),)), s, np.zeros((int(fs*0.1),))))
-orig_len = len(data_seq)
-#data_seq = np.concatenate((np.zeros((int(fs*0.1),)), data_seq, np.zeros((int(fs*0.1),))))
-chan_op_pb = transmit(data_seq,fade_chan,snr)
-chan_op = chan_op_pb * np.exp(-2j * np.pi * fc * np.arange(len(chan_op_pb)) / fs)
-
-xcor = sg.fftconvolve(chan_op, sg.resample_poly(data_sym_up[::-1].conj(), ns, 1))
-#peaks_rx, _ = sg.find_peaks(xcor, distance=len(sg.resample_poly(d,ns,1)))
-peaks_rx, _ = sg.find_peaks(xcor, height=0.2, distance=len(d) - 100)
-#peaks_rx, _ = sg.find_peaks(xcorr_for_peaks, height=0.2, distance=len(self.preamble) - 100)
-# v = v[peaks_rx[1] * self.Ns :]
-
-possible_mse = np.zeros(len(peaks_rx))
-for i in range(len(peaks_rx)):
-    chan_op_adj = chan_op[int(peaks_rx[i]*ns):]
-    try:
-        dec_sym = dfe(chan_op_adj,ff_filter,fb_filter,ff_filter_len,fb_filter_len)
-    except:
-        dec_sym = dfe(chan_op,ff_filter,fb_filter,ff_filter_len,fb_filter_len)
-        #print(f"whoops @ i= {i}")
-
-    # MSE
-    dec_sym = dec_sym[:orig_len]
+for i in range(len(snr_dB)):
+    # SNR parameters
+    snr = 10**(0.1 * snr_dB[i])
+    chan_op_train = transmit(training_seq,fade_chan,snr)
+    # LMS update of taps
+    ff_filter,fb_filter = filt_init(chan_op_train,training_sym,ff_filter_len,fb_filter_len,chan_len) 
+    chan_op_data = transmit(data_seq,fade_chan,snr)
+    dec_sym = dfe(chan_op_data,ff_filter,fb_filter,ff_filter_len,fb_filter_len)
     dec_sym = (dec_sym > 0)*2 - 1
-    data_sym = (data_sym_up > 0)*2 - 1
+    data_sym = (data_sym > 0)*2 - 1
+    try:
+        mse[i] = 10 * np.log10(np.mean(np.abs(data_sym[:len(dec_sym)]- dec_sym) ** 2))
+    except ZeroDivisionError:
+        mse[i] = -99
 
-    mse = np.zeros(abs(len(data_sym)-len(dec_sym)))
-    for k in range(abs(len(data_sym)-len(dec_sym))):
-        mse[k] = 10 * np.log10(np.mean(np.abs(data_sym[k:k+len(dec_sym)]- dec_sym) ** 2))
-
-    #print(f"Lowest MSE: {np.amin(mse)}")
-    possible_mse[i] = np.amin(mse)
-
-print(f"Lowest Lowest MSE: {np.amin(possible_mse)} @ ind={np.argmin(possible_mse)}")
-#print(f"data_sym_len: {len(data_sym)}")
-#print(f"dec_sym_len: {len(dec_sym)}")
-
-#print(np.argmax(peaks_rx))
-
+plt.plot(snr_dB,mse,'o')
+plt.xlabel('SNR (dB)')
+plt.ylabel('MSE (dB)')
+plt.title('SNR vs MSE for BPSK Signal')
+plt.show()
