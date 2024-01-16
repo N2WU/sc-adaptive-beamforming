@@ -104,48 +104,68 @@ ns = fs / R
 fc = 16e3
 uf = int(fs / R)
 df = int(uf / ns)
+use_rrc = np.array([False,True])
+mse = np.zeros((len(use_rrc),len(snr_dB)),dtype='float')
 
-d = np.array(sg.max_len_seq(bits)[0]) * 2 - 1.0
-# Training phase
-training_sym = np.tile(d, training_rep)
-training_seq = training_sym
-training_seq /= np.max(np.abs(training_seq))
+for k in range(len(use_rrc)):
+    d = np.array(sg.max_len_seq(bits)[0]) * 2 - 1.0
+    _, rc_tx = rrcosfilter(16 * int(1 / R * fs), 0.5, 1 / R, fs)
+    _, rc_rx = rrcosfilter(16 * int(fs / R), 0.5, 1 / R, fs)
+    # Training phase
+    training_sym = np.tile(d, training_rep)
+    # upsample
+    training_sym_up = sg.resample_poly(training_sym,ns,1)
+    if use_rrc[k] == True:
+        training_sym_up = np.convolve(training_sym_up, rc_tx, "full")
+        # training_sym_up = training_sym_up[:int(len(training_sym)*ns)]
+    training_seq = np.real(training_sym_up * np.exp(2j * np.pi * fc * np.arange(len(training_sym_up)) / fs))
+    training_seq /= np.max(np.abs(training_seq))
 
-# Data transmission phase
-data_sym = np.tile(d, rep)
-data_seq = data_sym
-data_seq /= np.max(np.abs(data_seq))
+    # Data transmission phase
+    data_sym = np.tile(d, rep)
+    # upsample
+    data_sym_up = sg.resample_poly(data_sym,ns,1)
+    if use_rrc[k] == True:
+        data_sym_up = np.convolve(data_sym_up, rc_tx, "full")
+        # data_sym_up = data_sym_up[:int(len(data_sym)*ns)]
+    data_seq = np.real(data_sym_up * np.exp(2j * np.pi * fc * np.arange(len(data_sym_up)) / fs))
+    data_seq /= np.max(np.abs(data_seq))
+    training_len = len(training_seq)
+    data_len = len(data_seq)
 
-training_len = len(training_seq)
-data_len = len(data_seq)
+    fade_chan = [1, 0.5]#[0.407, 0.815, 0.407]
+    fade_chan = fade_chan / np.linalg.norm(fade_chan)
+    chan_len = len(fade_chan)
 
-fade_chan = [1, 0.5]#[0.407, 0.815, 0.407]
-fade_chan = fade_chan / np.linalg.norm(fade_chan)
-chan_len = len(fade_chan)
+    for i in range(len(snr_dB)):
+        # SNR parameters
+        snr = 10**(0.1 * snr_dB[i])
+        chan_op_train_pb = transmit(training_seq,fade_chan,snr)
+        chan_op_train = chan_op_train_pb * np.exp(-2j * np.pi * fc * np.arange(len(chan_op_train_pb)) / fs)
+        if use_rrc[k] == True:
+            chan_op_train = np.convolve(chan_op_train, rc_rx, "full")
+            chan_op_train = chan_op_train[:len(chan_op_train_pb)]
+        # LMS update of taps
+        ff_filter,fb_filter = filt_init(chan_op_train,training_sym_up,ff_filter_len,fb_filter_len,chan_len) 
 
-mse = np.zeros(len(snr_dB),dtype='float')
-
-for i in range(len(snr_dB)):
-    # SNR parameters
-    snr = 10**(0.1 * snr_dB[i])
-    chan_op_train = transmit(training_seq,fade_chan,snr)
-    # LMS update of taps
-    ff_filter,fb_filter = filt_init(chan_op_train,training_sym,ff_filter_len,fb_filter_len,chan_len) 
-    chan_op_data = transmit(data_seq,fade_chan,snr)
-    dec_sym = dfe(chan_op_data,ff_filter,fb_filter,ff_filter_len,fb_filter_len)
-    dec_sym = (dec_sym > 0)*2 - 1
-    data_sym = (data_sym > 0)*2 - 1
-    with np.errstate(divide='ignore', invalid='ignore'):
-        mse[i] = 10 * np.log10(np.mean(np.abs(data_sym[:len(dec_sym)]- dec_sym) ** 2))
-    if np.isneginf(mse[i]) == 1:
-        mse[i] = -40
-
-#np.isneginf(mse) = -99
+        chan_op_data_pb = transmit(data_seq,fade_chan,snr)
+        chan_op_data = chan_op_data_pb * np.exp(-2j * np.pi * fc * np.arange(len(chan_op_data_pb)) / fs)
+        if use_rrc[k] == True:
+            chan_op_data = np.convolve(chan_op_data, rc_rx, "full")
+            chan_op_data = chan_op_data[:len(chan_op_data_pb)]
+        dec_sym = dfe(chan_op_data,ff_filter,fb_filter,ff_filter_len,fb_filter_len)
+        dec_sym = (dec_sym > 0)*2 - 1
+        data_sym_up = (data_sym_up > 0)*2 - 1 #data sym or data sym up?
+        with np.errstate(divide='ignore', invalid='ignore'):
+            mse[k,i] = 10 * np.log10(np.mean(np.abs(data_sym_up[:len(dec_sym)]- dec_sym) ** 2))
+        if np.isneginf(mse[k,i]) == 1:
+            mse[k,i] = -40
 
 fig, ax = plt.subplots()
-ax.plot(snr_dB,mse,'o')
+ax.plot(snr_dB,mse[0,:],'o',snr_dB,mse[1,:],'s')
 ax.set_xlabel('SNR (dB)')
 ax.set_ylabel('MSE (dB)')
+ax.legend(['No RRC','RRC'])
 ax.set_xticks(np.arange(snr_dB[0],snr_dB[-1],5))
 ax.set_title('SNR vs MSE for BPSK Signal')
 plt.show()
