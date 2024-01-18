@@ -52,15 +52,16 @@ def dfe(v,d,n_ff,n_fb,ns):
     d_tilde = np.zeros((len(d_rls),), dtype=complex)
     Q = np.eye(n_ff + n_fb) / delta
     pk = np.zeros(1, dtype=complex)
+    cumsum_phi = 0.0
+    sse = 0.0
 
     for i in np.arange(len(d_rls) - 1, dtype=int):
         nb = (i) * ns + (Nplus - 1) * ns - 1
-        xn = v[
-            :, int(nb + np.ceil(ns / fractional_spacing / 2)) : int(nb + self.Ns)
+        xn = v[ int(nb + np.ceil(ns / fractional_spacing / 2)) : int(nb + ns)
             + 1 : int(ns / fractional_spacing)
         ]
         xn *= np.exp(-1j * theta[i])
-        x_buf = np.concatenate((xn, x), axis=1)
+        x_buf = np.concatenate((xn, x), axis=0)
         x = x_buf[:n_ff]
         pk = np.inner(x, a[:n_ff].conj())
         p = pk.sum()
@@ -72,6 +73,10 @@ def dfe(v,d,n_ff,n_fb,ns):
             d_tilde[i] = d_rls[i]
         e[i] = d_tilde[i] - d_hat[i]
         y = np.concatenate((x.reshape(n_ff), d_backward))
+        # PLL
+        phi = np.imag(p * np.conj(d_tilde[i] + q))
+        cumsum_phi += phi
+        theta[i + 1] = theta[i] + 0.0 * phi + 0.0 * cumsum_phi
         # RLS
         k = (
             np.matmul(Q, y.T)
@@ -94,8 +99,8 @@ if __name__ == "__main__":
     rep = 16
     training_rep = 4
     snr_db = np.arange(-10,20,2)
-    ff_filter_len = 20
-    fb_filter_len = 8
+    n_ff = 20
+    n_fb = 8
     R = 3000
     fs = 48000
     ns = fs / R
@@ -130,6 +135,14 @@ if __name__ == "__main__":
         # sync (skip for now)
 
         # dfe
-        d_hat = dfe(v,d)
-        mse[i] = 10 * np.log10(np.mean(np.abs(u-d_hat) ** 2))
-        print("MSE is: ", mse)
+        d_hat = dfe(v,d,n_ff,n_fb,ns)
+        mse[i] = 10 * np.log10(np.mean(np.abs(d-d_hat) ** 2))
+
+
+    fig, ax = plt.subplots()
+    ax.plot(snr_db,mse,'o')
+    ax.set_xlabel('SNR (dB)')
+    ax.set_ylabel('MSE (dB)')
+    ax.set_xticks(np.arange(snr_db[0],snr_db[-1],5))
+    ax.set_title('SNR vs MSE for BPSK Signal')
+    plt.show()
