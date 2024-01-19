@@ -93,6 +93,58 @@ def dfe(v,d,n_ff,n_fb,ns):
         d_backward = d_backward_buf[:n_fb]
     return d_hat
 
+def dfe_v2(v,d,n_ff,n_fb,ns):
+    Nplus = 5
+    n_training = int(4 * (n_ff + n_fb) / ns)
+    fractional_spacing = 4
+    a = np.zeros(n_ff, dtype=complex)
+    b = np.zeros(n_fb, dtype=complex)
+    d_tilde = np.zeros(len(d), dtype=float)
+    d_hat = np.zeros(len(d), dtype=float)
+    d_backward = np.zeros(n_fb, dtype=complex)
+    theta = np.zeros(len(d), dtype=float)
+    cumsum_phi = 0.0
+
+    for i in np.arange(len(d) - 1, dtype=int):
+        # 1. delay v by N samples
+        nb = (i) * ns + (Nplus - 1) * ns - 1
+        v_nt = v[ int(nb + np.ceil(ns / fractional_spacing / 2)) : int(nb + ns) 
+            + 1 : int(ns / fractional_spacing)]
+        v_nt *= np.exp(-1j * theta[i])
+        print(len(v_nt))
+        print(len(d))
+        # 2a. form a' taps of FF filter
+        # 2b. store N samples of v
+        rvv = np.correlate(v_nt,v_nt[::-1],mode='full')
+        Rvv = np.eye(len(rvv))*rvv
+        Rvd = np.correlate(v_nt,d,mode='full')
+        a = np.dot(np.linalg.inv(Rvv),Rvd)
+        v_buf = np.concatenate((v_nt, v_n), axis=0)
+        v_n = v_buf[:n_ff]
+        # 3. calculate pn
+        p = np.sum(np.inner(v_n, a[:n_ff].conj()))
+        # 4a. form b' taps of FB filter
+        # 4b. store N samples of d_tilde (prev. detected symbols)
+        # 5. calcualte qn
+        q = np.inner(d_backward, b.conj())
+        # 6a. calculate d_hat
+        # 6b. calculate d_tilde
+        d_hat[i] = p - q
+        if i > n_training:
+            d_tilde[i] = (d_tilde[i] > 0)*2 - 1
+        else:
+            d_tilde[i] = d[i]
+        e = d_tilde[i] - d_hat[i]
+        phi = np.imag(p * np.conj(d_tilde[i] + q))
+        cumsum_phi += phi
+        theta[i + 1] = theta[i] + 0.0 * phi + 0.0 * cumsum_phi
+        c += e.conj()
+        a = c[:n_ff]
+        b = -c[-n_fb:]
+        d_backward_buf = np.insert(d_backward, 0, d_tilde[i])
+        d_backward = d_backward_buf[:n_fb]
+    return d_hat
+
 if __name__ == "__main__":
     # initialize
     bits = 7
@@ -135,8 +187,9 @@ if __name__ == "__main__":
         # sync (skip for now)
 
         # dfe
-        d_hat = dfe(v,d,n_ff,n_fb,ns)
-        mse[i] = 10 * np.log10(np.mean(np.abs(d-d_hat) ** 2))
+        d_adj = np.tile(d,1)
+        d_hat = dfe_v2(v,d_adj,n_ff,n_fb,ns)
+        mse[i] = 10 * np.log10(np.mean(np.abs(d_adj-d_hat) ** 2))
 
 
     fig, ax = plt.subplots()
