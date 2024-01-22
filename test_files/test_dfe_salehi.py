@@ -152,13 +152,14 @@ def lms(v,d,ns):
     d_hat = np.zeros(len(d))
     d_tilde = np.zeros(len(d))
     mu = 0.001
-    a = 0
     for i in np.arange(len(d) - 1, dtype=int):
         # resample v with fractional spacing
-        nb = (i) * ns + (Nplus - 1) * ns - 1 # basically a sample index?
+        nb = (i) * ns + (Nplus - 1) * ns - 1 # basically a sample index
         v_nt = v[ int(nb + np.ceil(ns / fractional_spacing / 2)) : int(nb + ns) 
             + 1 : int(ns / fractional_spacing)]
     # select a' (?)
+        if i==0:
+            a = np.ones_like(v_nt)
     # calculate d_hat
         d_hat[i] = np.dot(a,v_nt)
     # calculate e (use d=dec(d_hat))
@@ -168,7 +169,7 @@ def lms(v,d,ns):
             d_tilde[i] = d[i]
         err = d_tilde[i] - d_hat[i]
     # select a(n+1) with stochastic gradient descent 
-        a += mu*v_nt*err
+        a += mu*v_nt*(err**2)
     return d_hat
 
 if __name__ == "__main__":
@@ -207,14 +208,15 @@ if __name__ == "__main__":
         # downshift
         v = r * np.exp(-2j * np.pi * fc * np.arange(len(r)) / fs)
         # decimate
-        #v = sg.decimate(v, df)
+        # v = sg.decimate(v, df)
         # filter
         v_rrc = np.convolve(v, rc_rx, "full")
         # sync (skip for now)
 
         # dfe
         d_adj = np.tile(d,1)
-        d_hat = dfe_v2(v,d_adj,n_ff,n_fb,ns)
+        # d_hat = dfe_v2(v,d_adj,n_ff,n_fb,ns)
+        d_hat = lms(v,d,ns)
         mse[i] = 10 * np.log10(np.mean(np.abs(d_adj-d_hat) ** 2))
 
 
