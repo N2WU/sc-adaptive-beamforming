@@ -145,6 +145,32 @@ def dfe_v2(v,d,n_ff,n_fb,ns):
         d_backward = d_backward_buf[:n_fb]
     return d_hat
 
+def lms(v,d,ns):
+    Nplus = 5
+    fractional_spacing = 4
+    n_training = 24
+    d_hat = np.zeros(len(d))
+    d_tilde = np.zeros(len(d))
+    mu = 0.001
+    a = 0
+    for i in np.arange(len(d) - 1, dtype=int):
+        # resample v with fractional spacing
+        nb = (i) * ns + (Nplus - 1) * ns - 1 # basically a sample index?
+        v_nt = v[ int(nb + np.ceil(ns / fractional_spacing / 2)) : int(nb + ns) 
+            + 1 : int(ns / fractional_spacing)]
+    # select a' (?)
+    # calculate d_hat
+        d_hat[i] = np.dot(a,v_nt)
+    # calculate e (use d=dec(d_hat))
+        if i > n_training:
+            d_tilde[i] = (d_tilde[i] > 0)*2 - 1
+        else:
+            d_tilde[i] = d[i]
+        err = d_tilde[i] - d_hat[i]
+    # select a(n+1) with stochastic gradient descent 
+        a += mu*v_nt*err
+    return d_hat
+
 if __name__ == "__main__":
     # initialize
     bits = 7
@@ -181,7 +207,7 @@ if __name__ == "__main__":
         # downshift
         v = r * np.exp(-2j * np.pi * fc * np.arange(len(r)) / fs)
         # decimate
-        v = sg.decimate(v, df)
+        #v = sg.decimate(v, df)
         # filter
         v_rrc = np.convolve(v, rc_rx, "full")
         # sync (skip for now)
