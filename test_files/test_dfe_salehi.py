@@ -169,7 +169,7 @@ def lms(v,d,ns):
             d_tilde[i] = d[i]
         err = d_tilde[i] - d_hat[i]
     # select a(n+1) with stochastic gradient descent 
-        a += mu*v_nt*(err**2)
+        a += mu*v_nt*err.conj()
     return d_hat
 
 if __name__ == "__main__":
