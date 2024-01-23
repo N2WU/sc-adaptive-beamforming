@@ -32,7 +32,9 @@ def transmit(s,snr):
     h = np.asarray([0.5, 0.71, 0.5]) # from salehi
     sigma = 1 / (2 * snr)
     n = np.sqrt(sigma)*np.random.randn(len(s)+len(h)-1)
-    r = np.convolve(h,s)+n
+    h = sg.resample(h,len(s))
+    r = np.convolve(h,s)
+    print(len(r))
     return r
 
 def dfe(v,d,n_ff,n_fb,ns):

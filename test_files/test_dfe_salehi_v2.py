@@ -28,7 +28,7 @@ def rrcosfilter(N, alpha, Ts, Fs):
             ) / (np.pi * t * (1 - (4 * alpha * t / Ts) * (4 * alpha * t / Ts)) / Ts)
     return time_idx, h_rrc
 
-def transmit(s,snr,n_rx,el_spacing):
+def transmit(s,snr,n_rx,el_spacing,R,fc,fs):
     reflection_list = np.asarray([1,0.5]) # reflection gains
     x_tx_list = np.array([5,-5])
     y_tx_list = np.array([20,20])
@@ -38,7 +38,7 @@ def transmit(s,snr,n_rx,el_spacing):
     y_rx = np.zeros_like(x_rx)
     rng = np.random.RandomState(2021)
     r_multichannel = rng.randn(duration * fs, n_rx) / snr
-    for i in range(len(reflection)):
+    for i in range(len(reflection_list)):
         x_tx, y_tx = x_tx_list[i], y_tx_list[i]
         reflection = reflection_list[i] #delay and sum not scale
         dx, dy = x_rx - x_tx, y_rx - y_tx
@@ -47,7 +47,52 @@ def transmit(s,snr,n_rx,el_spacing):
         delay = np.round(delta_tau * fs).astype(int) # sample delay
         for j, delay_j in enumerate(delay):
             r_multichannel[delay_j:delay_j+len(s), j] += reflection * s
-    return r
+    
+    r = r_multichannel
+    r_fft = np.fft.fft(r, axis=0)
+    freqs = np.fft.fftfreq(len(r[:, 0]), 1/fs)
+    index = np.where((freqs >= fc-R/2) & (freqs < fc+R/2))[0]
+    N = len(index)
+    fk = freqs[index]       
+    yk = r_fft[index, :]    # N*M
+
+    theta_start = -90
+    theta_end = 90
+    S_theta = np.arange(theta_start, theta_end, 1,dtype="complex128")
+    N_theta = len(S_theta)
+    theta_start = np.deg2rad(theta_start)
+    theta_end = np.deg2rad(theta_end)
+    theta_list = np.linspace(theta_start, theta_end, N_theta)
+
+    for n_theta, theta in enumerate(theta_list):
+        d_tau = np.sin(theta) * el_spacing/c
+        S_M = np.exp(-2j * np.pi * d_tau * np.dot(fk.reshape(N, 1), np.arange(n_rx).reshape(1, n_rx)))    # N*M
+        SMxYk = np.einsum('ij,ji->i', S_M.conj(), yk.T,dtype="complex128")
+        S_theta[n_theta] = np.real(np.vdot(SMxYk, SMxYk))
+
+    S_theta_peaks_idx, _ = sg.find_peaks(S_theta, height=0)
+    S_theta_peaks = S_theta[S_theta_peaks_idx] # plot and see
+    theta_m_idx = np.argsort(S_theta_peaks)
+    theta_m = theta_list[S_theta_peaks_idx[theta_m_idx[-len(reflection_list):]]]
+
+    # do beamforming
+    y_tilde = np.zeros((N,len(reflection_list)), dtype=complex)
+    for k in range(N):
+        d_tau_m = np.sin(theta_m) * el_spacing/c
+        Sk = np.exp(-2j * np.pi * fk[k] * np.arange(n_rx).reshape(n_rx, 1) @ d_tau_m.reshape(1, len(reflection_list)))
+        for i in range(len(reflection_list)):
+            e_pu = np.zeros((len(reflection_list), 1))
+            e_pu[i, 0] = 1
+            wk = Sk @ np.linalg.inv(Sk.conj().T @ Sk) @ e_pu
+            y_tilde[k, i] = wk.conj().T @ yk[k, :].T
+
+    y_fft = np.zeros((len(r[:, 0]), len(reflection_list)), complex)
+    y_fft[index, :] = y_tilde
+    y = np.fft.ifft(y_fft, axis=0)
+
+    # processing the signal we get from bf
+    r_multichannel_1 = y
+    return r_multichannel_1
 
 def dfe(v,d,n_ff,n_fb,ns):
     delta = 0.001
@@ -189,10 +234,10 @@ def lms(v,d,ns):
 def rls(un,err,n):
     forget_fac = 0.99
     # the p-order is just the length of un
-    rls = np.zeros(n)
+    rls = np.zeros((n,len(un)),dtype=complex)
     for i in range(n):
-        rls[i] = 2 * (forget_fac**(n-i))*err[i]*un
-    rls_return = rls.sum()
+        rls[i,:] = 2 * (forget_fac**(n-i))*err[i]*un
+    rls_return = np.sum(rls,axis=0)
     return rls_return
 
 def dfe_v3(v,d,n_ff,n_fb,ns):
@@ -202,13 +247,14 @@ def dfe_v3(v,d,n_ff,n_fb,ns):
     d_tilde = np.zeros(len(d), dtype=float)
     d_hat = np.zeros(len(d), dtype=float)
     err = np.zeros_like(d_hat,dtype=float)
+    c = np.ones(n_ff+n_fb,dtype=complex)
     # already assuming RRC does the dirty work
     # step through:
-    for i in np.arange(len(d) - 1, dtype=int):
-        v_n = v[int(i-n_ff),int(i+n_ff/2)] # goes forward and back
+    for i in np.arange(int(n_ff/2),len(d) - 1, dtype=int):
+        v_n = v[int(i-n_ff/2):int(i+n_ff/2)] # goes forward and back
         # find d_hat
         d_tilde_n = d_tilde[-n_fb:]
-        u_n = [[v_n],[d_tilde_n]]
+        u_n = np.append(v_n,d_tilde_n)
         d_hat[i] = np.inner(c.conj(),u_n)
         if i > n_training:
             d_tilde[i] = (d_tilde[i] > 0)*2 - 1
@@ -225,7 +271,7 @@ if __name__ == "__main__":
     bits = 7
     rep = 16
     training_rep = 4
-    snr_db = np.arange(-10,20,2)
+    snr_db = 10 #np.arange(-10,20,2)
     n_ff = 20
     n_fb = 8
     R = 3000
@@ -235,9 +281,9 @@ if __name__ == "__main__":
     uf = int(fs / R)
     df = int(uf / ns)
     n_rx = 12
-    d_lambda = np.array([0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2])
+    d_lambda = np.array([0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]) #0.5
     el_spacing = d_lambda*343/fc
-    mse = np.zeros(len(snr_db),dtype='float')
+    mse = np.zeros(len(el_spacing),dtype='float')
     # init rrc filters with b=0.5
     _, rc_tx = rrcosfilter(16 * int(1 / R * fs), 0.5, 1 / R, fs)
     _, rc_rx = rrcosfilter(16 * int(fs / R), 0.5, 1 / R, fs)
@@ -253,11 +299,12 @@ if __name__ == "__main__":
     s = np.real(u_rrc * np.exp(2j * np.pi * fc * np.arange(len(u_rrc)) / fs))
     s /= np.max(np.abs(s))
     # generate rx signal with ISI
-    for i in range(len(snr_db)):
-        snr = 10**(0.1 * snr_db[i])
-        r = transmit(s,snr,n_rx,el_spacing)
+    for i in range(len(el_spacing)):
+        d0 = el_spacing[i]
+        snr = 10**(0.1 * snr_db)
+        r = transmit(s,snr,n_rx,d0,R,fc,fs) # should come out as an n-by-zero
         # downshift
-        v = r * np.exp(-2j * np.pi * fc * np.arange(len(r)) / fs)
+        v = r[:,0] * np.exp(-2j * np.pi * fc * np.arange(len(r)) / fs)
         # decimate
         # v = sg.decimate(v, df)
         # filter
@@ -266,15 +313,15 @@ if __name__ == "__main__":
 
         # dfe
         d_adj = np.tile(d,1)
-        d_hat = dfe_v3(v,d_adj,n_ff,n_fb,ns)
-        # d_hat = lms(v,d,ns)
+        #d_hat = dfe_v3(v,d_adj,n_ff,n_fb,ns)
+        d_hat = lms(v,d,ns)
         mse[i] = 10 * np.log10(np.mean(np.abs(d_adj-d_hat) ** 2))
 
 
     fig, ax = plt.subplots()
-    ax.plot(snr_db,mse,'o')
-    ax.set_xlabel('SNR (dB)')
+    ax.plot(d_lambda,mse,'o')
+    ax.set_xlabel(r'Element Spacing ($\lambda$)')
     ax.set_ylabel('MSE (dB)')
-    ax.set_xticks(np.arange(snr_db[0],snr_db[-1],5))
-    ax.set_title('SNR vs MSE for BPSK Signal')
+    #ax.set_xticks(np.arange(el_spacing[0],el_spacing[-1],5))
+    ax.set_title('MSE vs Element Spacing for 10dB BPSK Signal')
     plt.show()
