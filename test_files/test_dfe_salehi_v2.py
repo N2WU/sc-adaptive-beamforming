@@ -271,7 +271,7 @@ if __name__ == "__main__":
     bits = 7
     rep = 16
     training_rep = 4
-    snr_db = 10 #np.arange(-10,20,2)
+    snr_db = np.arange(-10,20,2)
     n_ff = 20
     n_fb = 8
     R = 3000
@@ -281,9 +281,9 @@ if __name__ == "__main__":
     uf = int(fs / R)
     df = int(uf / ns)
     n_rx = 12
-    d_lambda = np.array([0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]) #0.5
+    d_lambda = 0.5 #np.array([0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]) #0.5
     el_spacing = d_lambda*343/fc
-    mse = np.zeros(len(el_spacing),dtype='float')
+    mse = np.zeros(len(snr_db),dtype='float')
     # init rrc filters with b=0.5
     _, rc_tx = rrcosfilter(16 * int(1 / R * fs), 0.5, 1 / R, fs)
     _, rc_rx = rrcosfilter(16 * int(fs / R), 0.5, 1 / R, fs)
@@ -299,9 +299,9 @@ if __name__ == "__main__":
     s = np.real(u_rrc * np.exp(2j * np.pi * fc * np.arange(len(u_rrc)) / fs))
     s /= np.max(np.abs(s))
     # generate rx signal with ISI
-    for i in range(len(el_spacing)):
-        d0 = el_spacing[i]
-        snr = 10**(0.1 * snr_db)
+    for i in range(len(snr_db)):
+        d0 = el_spacing
+        snr = 10**(0.1 * snr_db[i])
         r = transmit(s,snr,n_rx,d0,R,fc,fs) # should come out as an n-by-zero
         # downshift
         v = r[:,0] * np.exp(-2j * np.pi * fc * np.arange(len(r)) / fs)
@@ -313,15 +313,15 @@ if __name__ == "__main__":
 
         # dfe
         d_adj = np.tile(d,1)
-        #d_hat = dfe_v3(v,d_adj,n_ff,n_fb,ns)
-        d_hat = lms(v,d,ns)
+        d_hat = dfe_v3(v,d_adj,n_ff,n_fb,ns)
+        #d_hat = lms(v,d,ns)
         mse[i] = 10 * np.log10(np.mean(np.abs(d_adj-d_hat) ** 2))
 
 
     fig, ax = plt.subplots()
-    ax.plot(d_lambda,mse,'o')
-    ax.set_xlabel(r'Element Spacing ($\lambda$)')
+    ax.plot(snr_db,mse,'o')
+    ax.set_xlabel(r'SNR (dB)')
     ax.set_ylabel('MSE (dB)')
     #ax.set_xticks(np.arange(el_spacing[0],el_spacing[-1],5))
-    ax.set_title('MSE vs Element Spacing for 10dB BPSK Signal')
+    ax.set_title('MSE vs SNR for BPSK Signal')
     plt.show()
