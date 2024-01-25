@@ -237,7 +237,7 @@ def rls(un,err,n):
     rls = np.zeros((n,len(un)),dtype=complex)
     for i in range(n):
         rls[i,:] = 2 * (forget_fac**(n-i))*err[i]*un
-    rls_return = np.sum(rls,axis=0)
+    rls_return = -np.sum(rls,axis=0)
     return rls_return
 
 def dfe_v3(v,d,n_ff,n_fb,ns):
@@ -304,7 +304,7 @@ if __name__ == "__main__":
         snr = 10**(0.1 * snr_db[i])
         r = transmit(s,snr,n_rx,d0,R,fc,fs) # should come out as an n-by-zero
         # downshift
-        v = r[:,0] * np.exp(-2j * np.pi * fc * np.arange(len(r)) / fs)
+        v = r[:,1] * np.exp(-2j * np.pi * fc * np.arange(len(r)) / fs)
         # decimate
         # v = sg.decimate(v, df)
         # filter
@@ -313,6 +313,7 @@ if __name__ == "__main__":
 
         # dfe
         d_adj = np.tile(d,1)
+        # eventually dfe should work for multichannel
         d_hat = dfe_v3(v,d_adj,n_ff,n_fb,ns)
         #d_hat = lms(v,d,ns)
         mse[i] = 10 * np.log10(np.mean(np.abs(d_adj-d_hat) ** 2))
