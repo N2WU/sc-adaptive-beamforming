@@ -94,7 +94,10 @@ def transmit(s,snr,n_rx,el_spacing,R,fc,fs):
     r_multichannel_1 = y
     return r_multichannel_1
 
-def dfe(vk, d, Nd, Tmp, T, Nplus, snr):
+def dfe(v, d, Nd, Tmp, T, Nplus, snr):
+    # make vk
+    
+    
     plt.figure()
     K_list = [1, 2, 5, 8]
 
