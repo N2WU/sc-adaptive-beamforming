@@ -225,7 +225,7 @@ if __name__ == "__main__":
     # Example usage:
     fc = 17000
     Fs = 44100
-    K0 = 10
+    K0 = 2
     vk = gen_v(fc,Fs,K0)
     Nd = 3000
     d = np.sign(np.random.randn(Nd))
