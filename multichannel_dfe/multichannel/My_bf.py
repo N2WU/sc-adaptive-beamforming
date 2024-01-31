@@ -1,8 +1,8 @@
 from My_functions import *
 import os
 
-generate_r = 1          # generate new signal, otherwise read the saved signal
-processing_no_bf = 1    # process the multichannel signal before bf
+generate_r = 0          # generate new signal, otherwise read the saved signal
+processing_no_bf = 0    # process the multichannel signal before bf
 get_S = 1               # get S_theta and do bf
 processing_bf = 1       # process the signal after bf
 
@@ -28,3 +28,5 @@ if get_S:
 if processing_bf:
     receiver_processing(filename='data/signal.npy', 
                         K_list=[n_path], feedforward_taps=20, feedbackward_taps=3, alpha_rls=0.9999)
+    
+plt.show()

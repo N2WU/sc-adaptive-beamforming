@@ -94,86 +94,92 @@ def transmit(s,snr,n_rx,el_spacing,R,fc,fs):
     r_multichannel_1 = y
     return r_multichannel_1
 
-def dfe(v, d, Nd, Tmp, T, Nplus, snr):
-    # make vk
-    
-    
-    plt.figure()
-    K_list = [1, 2, 5, 8]
+def dfe_old(v_rls, d, Ns, feedforward_taps=20, feedbackward_taps=8, alpha_rls=0.5): #, filename='data/r_multichannel.npy'
+        channel_list = {1:[0], 2:[0,11], 3:[0,6,11], 4:[0,4,7,11], 8:[0,1,3,4,6,7,9,11], 6:[0,2,4,6,8,10]}
+        #if filename == 'data/r_multichannel.npy':
+        #    v_rls = v_rls[channel_list[K], :]
+        # v_rls = v_rls[random.sample(range(0, 12), K), :]
+        K = len(v_rls[:,0])
+        delta = 0.001
+        Nplus = 2
+        n_training = int(4 * (feedforward_taps + feedbackward_taps) / Ns)
+        fractional_spacing = 4
+        K_1 = 0.0001
+        K_2 = K_1 / 10
 
-    for K in K_list:
-        Ns = 2
-        N = 6 * Ns
-        M = np.ceil(Tmp / T)
-        delta = 1e-3
-        Nt = 4 * (N + M)
-        FS = 2
-        Kf1 = 0.001
-        Kf2 = Kf1 / 10
-        Lf = 1
-        L = 0.98
-        P = np.eye(K * N + M) / delta
-        Lbf = 0.99
+        # v_rls = np.tile(v, (K, 1))
+        d_rls = d
+        x = np.zeros((K,feedforward_taps), dtype=complex)
+        a = np.zeros((K*feedforward_taps,), dtype=complex)
+        b = np.zeros((feedbackward_taps,), dtype=complex)
+        c = np.concatenate((a, -b))
+        theta = np.zeros((len(d_rls),K), dtype=float)
+        d_hat = np.zeros((len(d_rls),), dtype=complex)
+        d_tilde = np.zeros((len(d_rls),), dtype=complex)
+        d_backward = np.zeros((feedbackward_taps,), dtype=complex)
+        e = np.zeros((len(d_rls),), dtype=complex)
+        Q = np.eye(K*feedforward_taps + feedbackward_taps) / delta
+        pk = np.zeros((K,), dtype=complex)
 
-        v = vk[:K, :]
+        cumsum_phi = 0.0
+        sse = 0.0
+        for i in np.arange(len(d_rls) - 1, dtype=int):
+            nb = (i) * Ns + (Nplus - 1) * Ns - 1
+            xn = v_rls[
+                :, int(nb + np.ceil(Ns / fractional_spacing / 2)) : int(nb + Ns)
+                + 1 : int(Ns / fractional_spacing)
+            ]
+            for j in range(K):
+                xn[j,:] *= np.exp(-1j * theta[i,j])
+            x_buf = np.concatenate((xn, x), axis=1)
+            x = x_buf[:,:feedforward_taps]
 
-        f = np.zeros((Nd, K))
-        a = np.zeros(K * N)
-        b = np.zeros(M)
-        c = np.concatenate([a, -b])
-        p = np.zeros(K)
-        d_tilde = np.zeros(M)
-        Sf = np.zeros(K)  # sum of phi_0 ~ phi_n
-        x = np.zeros((K, N))
-        et = np.zeros(Nd)
+            # p = np.inner(x, a.conj()) * np.exp(-1j * theta[i])
+            for j in range(K):
+                pk[j] = np.inner(x[j,:], a[j*feedforward_taps:(j+1)*feedforward_taps].conj())
+            p = pk.sum()
 
-        for n in range(Nd):
-            nb = (n - 1) * Ns + (Nplus - 1) * Ns
-            xn = v[:, nb + np.ceil(Ns / FS / 2).astype(int): nb + Ns: int(Ns / FS)]
-            
-            for k in range(K):
-                xn[k, :] = xn[k, :] * np.exp(-1j * f[n, k])
-            
-            xn = np.fliplr(xn)
-            x = np.concatenate([xn, x[:, :N-1]], axis=1)
+            q = np.inner(d_backward, b.conj())
+            d_hat[i] = p - q
 
-            for k in range(K):
-                p[k] = np.dot(x[k, :], a[(k - 1) * N: k * N])
-            
-            psum = np.sum(p)
-            q = np.dot(d_tilde, b)
-            d_hat = psum - q
+            if i > n_training:
+                # d_tilde[i] = slicing(d_hat[i], M)
+                #d_tilde[i] = modem.modulate(np.array(modem.demodulate(np.array(d_hat[i], ndmin=1), 'hard'), dtype=int))
+                d_tilde[i] = (d_hat[i] > 0)*2 - 1
+            else:
+                d_tilde[i] = d_rls[i]
+            e[i] = d_tilde[i] - d_hat[i]
+            sse += np.abs(e[i] ** 2)
 
-            if n > Nt:
-                d[n] = (d_hat > 0)*2 - 1  # make decision
+            # y = np.concatenate((x * np.exp(-1j * theta[i]), d_backward))
+            y = np.concatenate((x.reshape(K*feedforward_taps), d_backward))
 
-            e = d[n] - d_hat
-            et[n] = abs(e) ** 2
+            # PLL
+            phi = np.imag(p * np.conj(d_tilde[i] + q))
+            cumsum_phi += phi
+            theta[i + 1] = theta[i] + K_1 * phi + K_2 * cumsum_phi
 
-            # parameter update
-            phi = np.imag(p * np.conj(p + e))
-            Sf = Lf * Sf + phi
-            f[n + 1, :] = f[n, :] + Kf1 * phi + Kf2 * Sf
+            # RLS
+            k = (
+                np.matmul(Q, y.T)
+                / alpha_rls
+                / (1 + np.matmul(np.matmul(y.conj(), Q), y.T) / alpha_rls)
+            )
+            c += k.T * e[i].conj()
+            Q = Q / alpha_rls - np.matmul(np.outer(k, y.conj()), Q) / alpha_rls
 
-            y = np.reshape(x.T, (1, K * N))
-            y = np.concatenate([y, d_tilde])
-            k = np.dot(P / L, y.T) / (1 + np.conj(y).dot(P / L).dot(y))
-            c = c + k.T.conj() * np.conj(e)
-            P = P / L - k.dot(np.conj(y)).dot(P / L)
+            a = c[:K*feedforward_taps]
+            b = -c[-feedbackward_taps:]
 
-            a = c[:K * N]
-            b = -c[K * N: K * N + M]
-            d_tilde = np.concatenate([[d[n]], d_tilde])[:-1]
+            d_backward_buf = np.insert(d_backward, 0, d_tilde[i])
+            d_backward = d_backward_buf[:feedbackward_taps]
 
-        # plot
-        plt.subplot(2, 2, K_list.index(K) + 1)
-        plt.plot(d_hat[Nt:], '*')
-        plt.axis('square')
-        plt.axis([-2, 2, -2, 2])
-        plt.title(f'K={K} SNR={snr}dB')
-
-    plt.show()
-    return d_hat
+        err = d_rls[n_training + 1 : -1] - d_tilde[n_training + 1 : -1]
+        mse = 10 * np.log10(
+            np.mean(np.abs(d_rls[n_training + 1 : -1] - d_hat[n_training + 1 : -1]) ** 2)
+        )
+        n_err = np.sum(np.abs(err) > 0.01)
+        return d_hat #, mse, n_err, n_training
 
 if __name__ == "__main__":
     # initialize
@@ -211,18 +217,30 @@ if __name__ == "__main__":
     for i in range(len(snr_db)):
         d0 = el_spacing
         snr = 10**(0.1 * snr_db[i])
-        r = transmit(s,snr,n_rx,d0,R,fc,fs) # should come out as an n-by-zero
-        # downshift
-        v = r[:,0] * np.exp(-2j * np.pi * fc * np.arange(len(r)) / fs)
-        # decimate
-        # v = sg.decimate(v, df)
-        # filter
-        v_rrc = np.convolve(v, rc_rx, "full")
-        # sync (skip for now)
-
+        r_multi = transmit(s,snr,n_rx,d0,R,fc,fs) # should come out as an n-by-zero
+        peaks_rx = 0
+        for i in range(len(r_multi[0,:])):
+            r = np.squeeze(r_multi[:, i])
+            v = r * np.exp(-2 * np.pi * 1j * fc * np.arange(len(r))/fs)
+            v = sg.decimate(v, df)
+            v = np.convolve(v, rc_rx, "full")
+            if i == 0:
+                xcorr_for_peaks = np.abs(sg.fftconvolve(sg.decimate(v, int(ns)), d.conj()))
+                xcorr_for_peaks /= xcorr_for_peaks.max()
+                time_axis_xcorr = np.arange(0, len(xcorr_for_peaks)) / R * 1e3  # ms
+                peaks_rx, _ = sg.find_peaks(
+                    xcorr_for_peaks, height=0.2, distance=len(d) - 100
+                )
+                v_multichannel = np.zeros((len(r_multi[0,:]),len(v[int(peaks_rx[1] * ns) :])), dtype=complex)
+                # plt.figure()
+                # plt.plot(np.abs(xcorr_for_peaks))
+                # plt.show()
+            v = v[int(peaks_rx[1] * ns) :]
+            v_multichannel = np.vstack([v_multichannel,v])
         # dfe
         d_adj = np.tile(d,1)
-        d_hat = dfe_v3(v,d_adj,n_ff,n_fb,ns)
+        d_hat = dfe_old(v_multichannel, d_adj, ns, n_ff, n_fb)
+        #d_hat_adj = (d_hat > 0) * 2 - 1
         #d_hat = lms(v,d,ns)
         mse[i] = 10 * np.log10(np.mean(np.abs(d_adj-d_hat) ** 2))
 

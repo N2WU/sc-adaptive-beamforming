@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+from matplotlib import cm
 import scipy.signal as sg
 import sounddevice as sd
 from commpy.modulation import QAMModem
@@ -101,8 +103,8 @@ def receive_signal(fc=6.5e3, tx_channel=16):
     channels = 24
     sig = np.zeros((len(s),channels))
     sig[:, tx_channel] = 0.1*s
-    # sig = np.concatenate((s, np.zeros((int(0.25*Fs),))))*0.1/2
-    # sig = np.tile(np.reshape(sig, (len(sig),1)), (1, channels))
+    sig = np.concatenate((s, np.zeros((int(0.25*Fs),))))*0.1/2
+    sig = np.tile(np.reshape(sig, (len(sig),1)), (1, channels))
     #r_multichannel = sd.playrec(sig, channels=channels, blocking=True)
     r_multichannel = sig
     np.save('data/r_multichannel.npy', r_multichannel)
@@ -181,7 +183,7 @@ def get_S_theta(n_path=1, theta_start=-45, theta_end=45, plot_S_theta=True, plot
 
         surf = ax.plot_surface(X, Y, Z, cmap=cm.coolwarm,
                             linewidth=0, antialiased=False)
-        ax.zaxis.set_major_locator(LinearLocator(10))
+        ax.zaxis.set_major_locator(ticker.LinearLocator(10))
         ax.zaxis.set_major_formatter('{x:.02f}')
         ax.view_init(elev=30, azim=60)
 
