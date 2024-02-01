@@ -56,7 +56,7 @@ def fil(d, p, Ns):
 def pwr(x):
     return np.sum(np.abs(x)**2) / len(x)
 
-def gen_v(fc,Fs,K0):
+def gen_s(fc,Fs):
     dp = np.array([1, -1, 1, -1, 1, 1, -1, -1, 1, 1, 1, 1, 1]) #bpsk preamble
     Nd = 3000
     Nz = 100
@@ -79,62 +79,28 @@ def gen_v(fc,Fs,K0):
     u = np.concatenate([up, np.zeros(Nz * Ns), ud]) # preamble _____ data
     us = sg.resample_poly(u, Fs, fs)
     s = np.real(us * np.exp(1j * 2 * np.pi * fc * np.arange(len(us)) / Fs))
-    
-    Nplus = 4
-    vk = []
-    for k in range(K0):
-        Tmp = 40/1000
-        tau = (3+np.random.randint(0,33,6))/1000 # time delay
-        h = np.exp(-tau/Tmp)
-        h = h/np.sqrt(np.sum(np.abs(h)))
-        taus = tau/Ts
-        taus = np.round(taus)
-        snr = 15
-        SNR = 10**(snr/10)
-        v = 1
-        c = 350
-        a = v/c
-        fd = a*fc
-        lenv = int(len(u) + np.max(taus))
-        v = np.zeros(lenv)
-        #vp = np.zeros(lenv)
-        for p in range(len(tau)):
-            taup = int(taus[p])
-            vp = np.zeros(lenv, dtype=complex)
-            vp[taup:taup+len(u)] = h[p]*u
-            v = v+vp
-        v = v/np.sqrt(pwr(v))
+    return s
 
-        vs = sg.resample_poly(v,Fs,fs)
-        s = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
-        r = sg.resample_poly(s,10**4,np.round((1+a)*(10**4)))
-        vr = 2*r*np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
-        v = sg.decimate(vr,int(Fs/fs))
-        v0 = v
-        v = np.copy(v0)
-        z = np.sqrt(1 / (2 * SNR)) * (np.random.randn(len(v)) + 1j * np.random.randn(len(v))) # complex noise
-        v = v + z
-        lenv = len(v)
-        vin = np.copy(v)
-        vp = v[:len(up) + Nz * Ns]
-        del_val, _ = fdel(vp, up)
-        tau0e = round(del_val * Ts * 1000)
-        vp1 = vp[del_val:del_val + len(up)]
-        if len(vp1) - len(up) < 0:
-            vp1 = vp[-len(up):]
-        fde,_,_ = fdop(vp1, up, fs, 12)
-        fde1 = fde
-        v = v * np.exp(-1j * 2 * np.pi * np.arange(lenv) * fde * Ts)
-        v = sg.resample_poly(v, 10**4, round(1 / (1 + fde / fc) * 10**4))
-        v = v[del_val:del_val + len(u)]
-        v = v[lenu + Nz * Ns + trunc * Ns + 1:]
-        v = sg.resample_poly(v, 2, Ns)
-        v = np.concatenate([v, np.zeros(Nplus * 2)])
-        if k == 0:
-            vk = v
-        else:
-            vk = np.vstack((v,vk))
-    return vk
+def transmit(s,el_spacing,n_rx,snr):
+    reflection_list = np.asarray([1,0.5]) # reflection gains
+    x_tx_list = np.array([5,-5])
+    y_tx_list = np.array([20,20])
+    c = 343
+    duration = 10 # amount of padding, basically
+    x_rx = np.arange(0, el_spacing*n_rx, el_spacing)
+    y_rx = np.zeros_like(x_rx)
+    rng = np.random.RandomState(2021)
+    r_multichannel = rng.randn(duration * fs, n_rx) / snr
+    for i in range(len(reflection_list)):
+        x_tx, y_tx = x_tx_list[i], y_tx_list[i]
+        reflection = reflection_list[i] #delay and sum not scale
+        dx, dy = x_rx - x_tx, y_rx - y_tx
+        d_rx_tx = np.sqrt(dx**2 + dy**2)
+        delta_tau = d_rx_tx / c
+        delay = np.round(delta_tau * fs).astype(int) # sample delay
+        for j, delay_j in enumerate(delay):
+            r_multichannel[delay_j:delay_j+len(s), j] += reflection * s
+    return r_multichannel  
 
 def dfe_func(vk, d, Nd, Tmp, T, Nplus, snr):
     plt.figure()
@@ -226,7 +192,8 @@ if __name__ == "__main__":
     fc = 17000
     Fs = 44100
     K0 = 2
-    vk = gen_v(fc,Fs,K0)
+    s = gen_s(fc,Fs,K0)
+    r_multi = transmit(s,el_spacing=0.05,n_rx=8)
     Nd = 3000
     d = np.sign(np.random.randn(Nd))
     Tmp = 40 / 1000

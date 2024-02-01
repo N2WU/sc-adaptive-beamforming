@@ -2,6 +2,9 @@ import numpy as np
 import scipy.signal as sg
 import matplotlib.pyplot as plt
 
+def upsample(s, n, phase=0):
+    return np.roll(np.kron(s, np.r_[1, np.zeros(n - 1)]), phase)
+
 def rrcosfilter(N, alpha, Ts, Fs):
     T_delta = 1 / float(Fs)
     time_idx = ((np.arange(N) - N / 2)) * T_delta
@@ -92,13 +95,9 @@ def transmit(s,snr,n_rx,el_spacing,R,fc,fs):
 
     # processing the signal we get from bf
     r_multichannel_1 = y
-    return r_multichannel_1
+    return r
 
 def dfe_old(v_rls, d, Ns, feedforward_taps=20, feedbackward_taps=8, alpha_rls=0.5): #, filename='data/r_multichannel.npy'
-        channel_list = {1:[0], 2:[0,11], 3:[0,6,11], 4:[0,4,7,11], 8:[0,1,3,4,6,7,9,11], 6:[0,2,4,6,8,10]}
-        #if filename == 'data/r_multichannel.npy':
-        #    v_rls = v_rls[channel_list[K], :]
-        # v_rls = v_rls[random.sample(range(0, 12), K), :]
         K = len(v_rls[:,0])
         delta = 0.001
         Nplus = 2
@@ -143,8 +142,6 @@ def dfe_old(v_rls, d, Ns, feedforward_taps=20, feedbackward_taps=8, alpha_rls=0.
             d_hat[i] = p - q
 
             if i > n_training:
-                # d_tilde[i] = slicing(d_hat[i], M)
-                #d_tilde[i] = modem.modulate(np.array(modem.demodulate(np.array(d_hat[i], ndmin=1), 'hard'), dtype=int))
                 d_tilde[i] = (d_hat[i] > 0)*2 - 1
             else:
                 d_tilde[i] = d_rls[i]
@@ -179,19 +176,19 @@ def dfe_old(v_rls, d, Ns, feedforward_taps=20, feedbackward_taps=8, alpha_rls=0.
             np.mean(np.abs(d_rls[n_training + 1 : -1] - d_hat[n_training + 1 : -1]) ** 2)
         )
         n_err = np.sum(np.abs(err) > 0.01)
-        return d_hat #, mse, n_err, n_training
+        return d_hat, mse, #n_err, n_training
 
 if __name__ == "__main__":
     # initialize
     bits = 7
     rep = 16
     training_rep = 4
-    snr_db = np.arange(-10,20,2)
+    snr_db = np.array([8, 12, 16, 20])#np.arange(-10,20,2)
     n_ff = 20
     n_fb = 8
     R = 3000
     fs = 48000
-    ns = fs / R
+    ns = int(fs/R)
     fc = 16e3
     uf = int(fs / R)
     df = int(uf / ns)
@@ -205,20 +202,22 @@ if __name__ == "__main__":
     # generate the tx BPSK signal
     # init bits (training bits are a select repition of bits)
     d = np.array(sg.max_len_seq(bits)[0]) * 2 - 1.0
-    u = np.tile(d,100)
+    u = np.tile(d,rep)
     # upsample
-    u = sg.resample_poly(u,ns,1)
+    u = sg.resample_poly(u,uf,1)
+    #u = upsample(u, uf)
     # filter
     u_rrc = np.convolve(u, rc_tx, "full")
     # upshift
     s = np.real(u_rrc * np.exp(2j * np.pi * fc * np.arange(len(u_rrc)) / fs))
     s /= np.max(np.abs(s))
     # generate rx signal with ISI
-    for i in range(len(snr_db)):
+    for ind in range(len(snr_db)):
         d0 = el_spacing
-        snr = 10**(0.1 * snr_db[i])
+        snr = 10**(0.1 * snr_db[ind])
         r_multi = transmit(s,snr,n_rx,d0,R,fc,fs) # should come out as an n-by-zero
         peaks_rx = 0
+        v_multichannel = []
         for i in range(len(r_multi[0,:])):
             r = np.squeeze(r_multi[:, i])
             v = r * np.exp(-2 * np.pi * 1j * fc * np.arange(len(r))/fs)
@@ -231,18 +230,27 @@ if __name__ == "__main__":
                 peaks_rx, _ = sg.find_peaks(
                     xcorr_for_peaks, height=0.2, distance=len(d) - 100
                 )
-                v_multichannel = np.zeros((len(r_multi[0,:]),len(v[int(peaks_rx[1] * ns) :])), dtype=complex)
                 # plt.figure()
                 # plt.plot(np.abs(xcorr_for_peaks))
                 # plt.show()
-            v = v[int(peaks_rx[1] * ns) :]
-            v_multichannel = np.vstack([v_multichannel,v])
+            #v = v[int(peaks_rx[1] * ns) :]
+            if i == 0:
+                v_multichannel = v
+            else:
+                v_multichannel = np.vstack((v_multichannel,v))
         # dfe
         d_adj = np.tile(d,1)
-        d_hat = dfe_old(v_multichannel, d_adj, ns, n_ff, n_fb)
-        #d_hat_adj = (d_hat > 0) * 2 - 1
+        d_hat, mse_out = dfe_old(v_multichannel, d_adj, ns, n_ff, n_fb)
+        d_hat_adj = (d_hat > 0) * 2 - 1
         #d_hat = lms(v,d,ns)
-        mse[i] = 10 * np.log10(np.mean(np.abs(d_adj-d_hat) ** 2))
+        mse[ind] = mse_out #10 * np.log10(np.mean(np.abs(d_adj-d_hat) ** 2))
+        # plot const
+        plt.subplot(2, 2, int(ind+1))
+        plt.scatter(np.real(d_hat), np.imag(d_hat), marker='*')
+        plt.axis('square')
+        plt.axis([-2, 2, -2, 2])
+        plt.title(f'SNR={snr_db[ind]}dB')
+
 
 
     fig, ax = plt.subplots()
