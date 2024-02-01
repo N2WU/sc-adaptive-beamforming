@@ -33,8 +33,8 @@ def rrcosfilter(N, alpha, Ts, Fs):
 
 def transmit(s,snr,n_rx,el_spacing,R,fc,fs):
     reflection_list = np.asarray([1,0.5]) # reflection gains
-    x_tx_list = np.array([5,-5])
-    y_tx_list = np.array([20,20])
+    x_tx_list = np.array([10,-10]) #([5,-5]) 
+    y_tx_list = np.array([50,50]) #([20,20])
     c = 343
     duration = 10 # amount of padding, basically
     x_rx = np.arange(0, el_spacing*n_rx, el_spacing)
