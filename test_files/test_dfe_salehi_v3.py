@@ -33,7 +33,7 @@ def rrcosfilter(N, alpha, Ts, Fs):
 
 def transmit(s,snr,n_rx,el_spacing,R,fc,fs):
     reflection_list = np.asarray([1,0.5]) # reflection gains
-    x_tx_list = np.array([10,-10]) #([5,-5]) 
+    x_tx_list = np.array([50,-10]) #([5,-5]) 
     y_tx_list = np.array([50,50]) #([20,20])
     c = 343
     duration = 10 # amount of padding, basically
@@ -95,15 +95,15 @@ def transmit(s,snr,n_rx,el_spacing,R,fc,fs):
 
     # processing the signal we get from bf
     r_multichannel_1 = y
-    return r
+    return r_multichannel_1
 
 def dfe_old(v_rls, d, Ns, feedforward_taps=20, feedbackward_taps=8, alpha_rls=0.5): #, filename='data/r_multichannel.npy'
         K = len(v_rls[:,0])
         delta = 0.001
         Nplus = 2
         n_training = int(4 * (feedforward_taps + feedbackward_taps) / Ns)
-        fractional_spacing = 4
-        K_1 = 0.0001
+        fractional_spacing = ns_fs
+        K_1 = 0.0000
         K_2 = K_1 / 10
 
         # v_rls = np.tile(v, (K, 1))
@@ -185,14 +185,15 @@ if __name__ == "__main__":
     training_rep = 4
     snr_db = np.array([8, 12, 16, 20])#np.arange(-10,20,2)
     n_ff = 20
-    n_fb = 8
+    n_fb = 4
     R = 3000
     fs = 48000
     ns = int(fs/R)
+    ns_fs = 4 # fractionally spaced
     fc = 16e3
     uf = int(fs / R)
     df = int(uf / ns)
-    n_rx = 12
+    n_rx = 1
     d_lambda = 0.5 #np.array([0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]) #0.5
     el_spacing = d_lambda*343/fc
     mse = np.zeros(len(snr_db),dtype='float')
@@ -207,7 +208,7 @@ if __name__ == "__main__":
     u = sg.resample_poly(u,uf,1)
     #u = upsample(u, uf)
     # filter
-    u_rrc = np.convolve(u, rc_tx, "full")
+    u_rrc = u #np.convolve(u, rc_tx, "full")
     # upshift
     s = np.real(u_rrc * np.exp(2j * np.pi * fc * np.arange(len(u_rrc)) / fs))
     s /= np.max(np.abs(s))
@@ -215,32 +216,38 @@ if __name__ == "__main__":
     for ind in range(len(snr_db)):
         d0 = el_spacing
         snr = 10**(0.1 * snr_db[ind])
-        r_multi = transmit(s,snr,n_rx,d0,R,fc,fs) # should come out as an n-by-zero
+        # r_multi = transmit(s,snr,n_rx,d0,R,fc,fs) # should come out as an n-by-zero
+        r_multi = np.tile(s,(n_rx,1)).T
         peaks_rx = 0
         v_multichannel = []
         for i in range(len(r_multi[0,:])):
             r = np.squeeze(r_multi[:, i])
             v = r * np.exp(-2 * np.pi * 1j * fc * np.arange(len(r))/fs)
-            v = sg.decimate(v, df)
-            v = np.convolve(v, rc_rx, "full")
+            # v
+            # v_xcorr = sg.decimate(v, df)
+            # v = np.convolve(v, rc_rx, "full")
             if i == 0:
-                xcorr_for_peaks = np.abs(sg.fftconvolve(sg.decimate(v, int(ns)), d.conj()))
+                xcorr_for_peaks = np.abs(sg.fftconvolve(v, sg.resample_poly(d[::-1].conj(),uf,1))) # correalte and sync at sample rate sg.decimate(v, int(ns)),
                 xcorr_for_peaks /= xcorr_for_peaks.max()
                 time_axis_xcorr = np.arange(0, len(xcorr_for_peaks)) / R * 1e3  # ms
                 peaks_rx, _ = sg.find_peaks(
                     xcorr_for_peaks, height=0.2, distance=len(d) - 100
                 )
-                # plt.figure()
-                # plt.plot(np.abs(xcorr_for_peaks))
-                # plt.show()
-            #v = v[int(peaks_rx[1] * ns) :]
+                #plt.figure()
+                #plt.plot(np.abs(xcorr_for_peaks))
+                #plt.show()
+            v = v[int(peaks_rx[1]) :] # * ns
             if i == 0:
                 v_multichannel = v
             else:
                 v_multichannel = np.vstack((v_multichannel,v))
         # dfe
-        d_adj = np.tile(d,1)
-        d_hat, mse_out = dfe_old(v_multichannel, d_adj, ns, n_ff, n_fb)
+        d_adj = np.tile(d,rep)
+        if n_rx == 1:
+            v_multichannel = v_multichannel[None,:]
+        # resample v_multichannel for frac spac
+        v_multichannel = sg.resample_poly(v_multichannel,ns_fs,ns,axis=1)
+        d_hat, mse_out = dfe_old(v_multichannel, d_adj, ns_fs, n_ff, n_fb)
         d_hat_adj = (d_hat > 0) * 2 - 1
         #d_hat = lms(v,d,ns)
         mse[ind] = mse_out #10 * np.log10(np.mean(np.abs(d_adj-d_hat) ** 2))
