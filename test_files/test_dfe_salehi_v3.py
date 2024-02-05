@@ -33,6 +33,7 @@ def rrcosfilter(N, alpha, Ts, Fs):
 
 def transmit(s,snr,n_rx,el_spacing,R,fc,fs):
     reflection_list = np.asarray([1,0.5]) # reflection gains
+    n_path = len(reflection_list)  
     x_tx_list = np.array([50,-10]) #([5,-5]) 
     y_tx_list = np.array([50,50]) #([20,20])
     c = 343
@@ -51,45 +52,51 @@ def transmit(s,snr,n_rx,el_spacing,R,fc,fs):
         for j, delay_j in enumerate(delay):
             r_multichannel[delay_j:delay_j+len(s), j] += reflection * s
     
-    r = r_multichannel
+    M = 12
+    r = r_multichannel[:,:M]
     r_fft = np.fft.fft(r, axis=0)
     freqs = np.fft.fftfreq(len(r[:, 0]), 1/fs)
+
     index = np.where((freqs >= fc-R/2) & (freqs < fc+R/2))[0]
     N = len(index)
     fk = freqs[index]       
     yk = r_fft[index, :]    # N*M
-
-    theta_start = -90
-    theta_end = 90
-    S_theta = np.arange(theta_start, theta_end, 1,dtype="complex128")
-    N_theta = len(S_theta)
+    theta_start = -45
+    theta_end = 45
+    N_theta = 200
+    S_theta = np.zeros((N_theta,))
+    S_theta3D = np.zeros((N_theta, N))
     theta_start = np.deg2rad(theta_start)
     theta_end = np.deg2rad(theta_end)
     theta_list = np.linspace(theta_start, theta_end, N_theta)
-
     for n_theta, theta in enumerate(theta_list):
         d_tau = np.sin(theta) * el_spacing/c
-        S_M = np.exp(-2j * np.pi * d_tau * np.dot(fk.reshape(N, 1), np.arange(n_rx).reshape(1, n_rx)))    # N*M
-        SMxYk = np.einsum('ij,ji->i', S_M.conj(), yk.T,dtype="complex128")
+        # for k in range(N):
+        #     S_M = np.exp(-2j * np.pi * fk[k] * d_tau * np.arange(M).reshape(M,1))
+        #     S_theta[n_theta] += np.abs(np.vdot(S_M.T, yk[k, :].T))**2
+        S_M = np.exp(-2j * np.pi * d_tau * np.dot(fk.reshape(N, 1), np.arange(M).reshape(1, M)))    # N*M
+        SMxYk = np.einsum('ij,ji->i', S_M.conj(), yk.T)
         S_theta[n_theta] = np.real(np.vdot(SMxYk, SMxYk))
+        S_theta3D[n_theta, :] = np.abs(SMxYk)**2
 
+    # n_path = 1 # number of path
     S_theta_peaks_idx, _ = sg.find_peaks(S_theta, height=0)
-    S_theta_peaks = S_theta[S_theta_peaks_idx] # plot and see
+    S_theta_peaks = S_theta[S_theta_peaks_idx]
     theta_m_idx = np.argsort(S_theta_peaks)
-    theta_m = theta_list[S_theta_peaks_idx[theta_m_idx[-len(reflection_list):]]]
+    theta_m = theta_list[S_theta_peaks_idx[theta_m_idx[-n_path:]]]
+    # print(theta_m/np.pi*180)
 
-    # do beamforming
-    y_tilde = np.zeros((N,len(reflection_list)), dtype=complex)
+    y_tilde = np.zeros((N,n_path), dtype=complex)
     for k in range(N):
         d_tau_m = np.sin(theta_m) * el_spacing/c
-        Sk = np.exp(-2j * np.pi * fk[k] * np.arange(n_rx).reshape(n_rx, 1) @ d_tau_m.reshape(1, len(reflection_list)))
-        for i in range(len(reflection_list)):
-            e_pu = np.zeros((len(reflection_list), 1))
+        Sk = np.exp(-2j * np.pi * fk[k] * np.arange(M).reshape(M, 1) @ d_tau_m.reshape(1, n_path))
+        for i in range(n_path):
+            e_pu = np.zeros((n_path,1))
             e_pu[i, 0] = 1
             wk = Sk @ np.linalg.inv(Sk.conj().T @ Sk) @ e_pu
             y_tilde[k, i] = wk.conj().T @ yk[k, :].T
 
-    y_fft = np.zeros((len(r[:, 0]), len(reflection_list)), complex)
+    y_fft = np.zeros((len(r[:, 0]), n_path), complex)
     y_fft[index, :] = y_tilde
     y = np.fft.ifft(y_fft, axis=0)
 
@@ -97,13 +104,13 @@ def transmit(s,snr,n_rx,el_spacing,R,fc,fs):
     r_multichannel_1 = y
     return r_multichannel_1
 
-def dfe_old(v_rls, d, Ns, feedforward_taps=20, feedbackward_taps=8, alpha_rls=0.5): #, filename='data/r_multichannel.npy'
+def dfe_old(v_rls, d, Ns, feedforward_taps=20, feedbackward_taps=8, alpha_rls=0.98):
         K = len(v_rls[:,0])
         delta = 0.001
         Nplus = 2
         n_training = int(4 * (feedforward_taps + feedbackward_taps) / Ns)
         fractional_spacing = ns_fs
-        K_1 = 0.0000
+        K_1 = 0.0000 # PLL shits everything up
         K_2 = K_1 / 10
 
         # v_rls = np.tile(v, (K, 1))
@@ -162,12 +169,100 @@ def dfe_old(v_rls, d, Ns, feedforward_taps=20, feedbackward_taps=8, alpha_rls=0.
                 / alpha_rls
                 / (1 + np.matmul(np.matmul(y.conj(), Q), y.T) / alpha_rls)
             )
+            #k_buf = Q/alpha_rls
+            #k_denom = 1+np.matmul(np.matmul(y.conj(),k_buf),y.T)
+            #k = np.matmul(k_buf,y.T) / k_denom
+            c += k.T * e[i].conj()
+            Q = Q / alpha_rls - np.matmul(np.outer(k, y.conj()), Q) / alpha_rls
+            #Q = Q / alpha_rls - np.matmul(np.matmul(k.reshape(1,-1), y.conj()), Q) / alpha_rls 
+            # Q = Q / alpha_rls - np.matmul(k.reshape(1,-1), y.conj()) * Q / alpha_rls 
+
+            a = c[:K*feedforward_taps]
+            b = -c[-feedbackward_taps:]
+            # b = -c[K*N:K*N+M]
+
+            d_backward_buf = np.insert(d_backward, 0, d_tilde[i])
+            d_backward = d_backward_buf[:feedbackward_taps]
+
+        err = d_rls[n_training + 1 : -1] - d_tilde[n_training + 1 : -1]
+        mse = 10 * np.log10(
+            np.mean(np.abs(d_rls[n_training + 1 : -1] - d_hat[n_training + 1 : -1]) ** 2)
+        )
+        n_err = np.sum(np.abs(err) > 0.01)
+        return d_hat, mse, #n_err, n_training
+
+def dfe_matlab(v_rls, d, Ns, feedforward_taps=20, feedbackward_taps=8, alpha_rls=0.5): #, filename='data/r_multichannel.npy'
+        K = len(v_rls[:,0])
+        delta = 0.001
+        Nplus = 2
+        n_training = int(4 * (feedforward_taps + feedbackward_taps) / Ns)
+        fractional_spacing = ns_fs
+        K_1 = 0.0000 # PLL shits everything up
+        K_2 = K_1 / 10
+
+        # v_rls = np.tile(v, (K, 1))
+        d_rls = d
+        x = np.zeros((K,feedforward_taps), dtype=complex)
+        a = np.zeros((K*feedforward_taps,), dtype=complex)
+        b = np.zeros((feedbackward_taps,), dtype=complex)
+        c = np.concatenate((a, -b))
+        theta = np.zeros((len(d_rls),K), dtype=float)
+        d_hat = np.zeros((len(d_rls),), dtype=complex)
+        d_tilde = np.zeros((len(d_rls),), dtype=complex)
+        d_backward = np.zeros((feedbackward_taps,), dtype=complex)
+        e = np.zeros((len(d_rls),), dtype=complex)
+        Q = np.eye(K*feedforward_taps + feedbackward_taps) / delta
+        pk = np.zeros((K,), dtype=complex)
+
+        cumsum_phi = 0.0
+        sse = 0.0
+        for i in np.arange(len(d_rls) - 1, dtype=int):
+            nb = (i) * Ns + (Nplus - 1) * Ns - 1
+            xn = v_rls[
+                :, int(nb + np.ceil(Ns / fractional_spacing / 2)) : int(nb + Ns)
+                + 1 : int(Ns / fractional_spacing)
+            ]
+            for j in range(K):
+                xn[j,:] *= np.exp(-1j * theta[i,j])
+            xn = np.fliplr(xn)
+            x = np.concatenate((xn, x), axis=1)
+            x = x[:,:feedforward_taps]
+
+            # p = np.inner(x, a.conj()) * np.exp(-1j * theta[i])
+            for j in range(K):
+                pk[j] = np.inner(x[j,:], a[j*feedforward_taps:(j+1)*feedforward_taps].conj())
+            p = pk.sum()
+
+            q = np.inner(d_backward, b.conj())
+            d_hat[i] = p - q
+
+            if i > n_training:
+                d_tilde[i] = (d_hat[i] > 0)*2 - 1
+            else:
+                d_tilde[i] = d_rls[i]
+            e[i] = d_tilde[i] - d_hat[i]
+            sse += np.abs(e[i] ** 2)
+
+            # y = np.concatenate((x * np.exp(-1j * theta[i]), d_backward))
+            y = np.concatenate((x.reshape(K*feedforward_taps), d_backward))
+
+            # PLL
+            phi = np.imag(p * np.conj(d_tilde[i] + q))
+            cumsum_phi += phi
+            theta[i + 1] = theta[i] + K_1 * phi + K_2 * cumsum_phi
+
+            # RLS
+            k = (
+                np.matmul(Q, y.T)
+                / alpha_rls
+                / (1 + np.matmul(np.matmul(y.conj(), Q), y.T) / alpha_rls)
+            )
             c += k.T * e[i].conj()
             Q = Q / alpha_rls - np.matmul(np.outer(k, y.conj()), Q) / alpha_rls
 
             a = c[:K*feedforward_taps]
             b = -c[-feedbackward_taps:]
-
+            # b = -c[K*N:K*N+M]
             d_backward_buf = np.insert(d_backward, 0, d_tilde[i])
             d_backward = d_backward_buf[:feedbackward_taps]
 
@@ -193,7 +288,7 @@ if __name__ == "__main__":
     fc = 16e3
     uf = int(fs / R)
     df = int(uf / ns)
-    n_rx = 1
+    n_rx = 12
     d_lambda = 0.5 #np.array([0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]) #0.5
     el_spacing = d_lambda*343/fc
     mse = np.zeros(len(snr_db),dtype='float')
@@ -216,8 +311,8 @@ if __name__ == "__main__":
     for ind in range(len(snr_db)):
         d0 = el_spacing
         snr = 10**(0.1 * snr_db[ind])
-        # r_multi = transmit(s,snr,n_rx,d0,R,fc,fs) # should come out as an n-by-zero
-        r_multi = np.tile(s,(n_rx,1)).T
+        r_multi = transmit(s,snr,n_rx,d0,R,fc,fs) # should come out as an n-by-zero
+        # r_multi = np.tile(s,(n_rx,1)).T
         peaks_rx = 0
         v_multichannel = []
         for i in range(len(r_multi[0,:])):
@@ -247,6 +342,7 @@ if __name__ == "__main__":
             v_multichannel = v_multichannel[None,:]
         # resample v_multichannel for frac spac
         v_multichannel = sg.resample_poly(v_multichannel,ns_fs,ns,axis=1)
+        #v_multichannel = v_multichannel[:,:int(len(v_multichannel)/2)]
         d_hat, mse_out = dfe_old(v_multichannel, d_adj, ns_fs, n_ff, n_fb)
         d_hat_adj = (d_hat > 0) * 2 - 1
         #d_hat = lms(v,d,ns)
@@ -257,8 +353,6 @@ if __name__ == "__main__":
         plt.axis('square')
         plt.axis([-2, 2, -2, 2])
         plt.title(f'SNR={snr_db[ind]}dB')
-
-
 
     fig, ax = plt.subplots()
     ax.plot(snr_db,mse,'o')
