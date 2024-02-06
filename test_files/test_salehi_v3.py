@@ -220,85 +220,90 @@ def dfe_old(v_rls, d, Ns, feedforward_taps=20, feedbackward_taps=8, alpha_rls=0.
         return d_hat, mse, #n_err, n_training
 
 def dfe_matlab(v_rls, d, Ns, feedforward_taps=20, feedbackward_taps=8, alpha_rls=0.5): #, filename='data/r_multichannel.npy'
-        K = len(v_rls[:,0])
+        K = len(v_rls[:,0]) # maximum
+        Ns = 2
+        N = int(6 * Ns)
+        M = int(63)
         delta = 0.001
-        Nplus = 2
-        n_training = int(4 * (feedforward_taps + feedbackward_taps) / Ns)
-        fractional_spacing = ns_fs
-        K_1 = 0.0000 # PLL shits everything up
-        K_2 = K_1 / 10
+        Nt = 4*(N+M)
+        FS = 2
+        Kf1 = 0.001
+        Kf2 = Kf1/10
+        Lf1 = 1
+        L = 0.98
+        P = np.eye(int(K*N+M))/delta
+        Lbf = 0.99
+        Nplus = 4
 
-        # v_rls = np.tile(v, (K, 1))
-        d_rls = d
-        x = np.zeros((K,feedforward_taps), dtype=complex)
-        a = np.zeros((K*feedforward_taps,), dtype=complex)
-        b = np.zeros((feedbackward_taps,), dtype=complex)
-        c = np.concatenate((a, -b))
-        theta = np.zeros((len(d_rls),K), dtype=float)
-        d_hat = np.zeros((len(d_rls),), dtype=complex)
-        d_tilde = np.zeros((len(d_rls),), dtype=complex)
-        d_backward = np.zeros((feedbackward_taps,), dtype=complex)
-        e = np.zeros((len(d_rls),), dtype=complex)
-        Q = np.eye(K*feedforward_taps + feedbackward_taps) / delta
-        pk = np.zeros((K,), dtype=complex)
+        v = v_rls[:K,]
 
-        cumsum_phi = 0.0
-        sse = 0.0
-        for i in np.arange(len(d_rls) - 1, dtype=int):
-            nb = (i) * Ns + (Nplus - 1) * Ns - 1
-            xn = v_rls[
-                :, int(nb + np.ceil(Ns / fractional_spacing / 2)) : int(nb + Ns)
-                + 1 : int(Ns / fractional_spacing)
+        Nd = 3000
+        f = np.zeros((Nd,K))
+        
+        a = np.zeros(int(K*N), dtype=complex)
+        b = np.zeros(M, dtype=complex)
+        c = np.append(a, -b)
+        p = np.zeros(int(K),dtype=complex)
+        d_tilde = np.zeros(M, dtype=complex)
+        Sf = np.zeros(K)
+        x = np.zeros((K,N), dtype=complex)
+        et = np.zeros(Nd, dtype=complex)
+        d_hat = np.zeros_like(d, dtype=complex)
+
+        for n in range(len(d)-1):
+            nb = (n) * Ns + (Nplus - 1) * Ns - 1
+            xn = v[
+                :, int(nb + np.ceil(Ns / FS / 2)) : int(nb + Ns)
+                + 1 : int(Ns / FS)
             ]
-            for j in range(K):
-                xn[j,:] *= np.exp(-1j * theta[i,j])
+            for k in range(K):
+               xn[k,:] *= np.exp(-1j * f[n,k])
             xn = np.fliplr(xn)
             x = np.concatenate((xn, x), axis=1)
-            x = x[:,:feedforward_taps]
+            x = x[:,:N]
 
-            # p = np.inner(x, a.conj()) * np.exp(-1j * theta[i])
-            for j in range(K):
-                pk[j] = np.inner(x[j,:], a[j*feedforward_taps:(j+1)*feedforward_taps].conj())
-            p = pk.sum()
+            for k in range(K):
+                p[k] = np.inner(x[k,:], a[k*N:(k+1)*N].conj())
+            psum = p.sum()
 
-            q = np.inner(d_backward, b.conj())
-            d_hat[i] = p - q
+            q = np.inner(d_tilde, b.conj())
+            d_hat[n] = psum - q
 
-            if i > n_training:
-                d_tilde[i] = (d_hat[i] > 0)*2 - 1
-            else:
-                d_tilde[i] = d_rls[i]
-            e[i] = d_tilde[i] - d_hat[i]
-            sse += np.abs(e[i] ** 2)
+            if n > Nt:
+                d[n] = (d_hat[n] > 0)*2 - 1
+
+            e = d[n]- d_hat[n]
+            et += np.abs(e ** 2)
 
             # y = np.concatenate((x * np.exp(-1j * theta[i]), d_backward))
-            y = np.concatenate((x.reshape(K*feedforward_taps), d_backward))
+            # y = np.concatenate((x.reshape(K*feedforward_taps), d_backward))
 
             # PLL
-            phi = np.imag(p * np.conj(d_tilde[i] + q))
-            cumsum_phi += phi
-            theta[i + 1] = theta[i] + K_1 * phi + K_2 * cumsum_phi
+            phi = np.imag(p * np.conj(p+e))
+            Sf = Sf + phi
+            f[n,:] = f[n,:] + Kf1*phi + Kf2*Sf
+
+            y = np.reshape(x.T,(1,int(K*N)))
+            y = np.append(y,d_tilde)
 
             # RLS
             k = (
-                np.matmul(Q, y.T)
-                / alpha_rls
-                / (1 + np.matmul(np.matmul(y.conj(), Q), y.T) / alpha_rls)
+                np.matmul(P, y.T)
+                / L
+                / (1 + np.matmul(np.matmul(y.conj(), P), y.T) / L)
             )
-            c += k.T * e[i].conj()
-            Q = Q / alpha_rls - np.matmul(np.outer(k, y.conj()), Q) / alpha_rls
+            c += k.T * e.conj()
+            P = P / L - np.matmul(np.outer(k, y.conj()), P) / L
 
-            a = c[:K*feedforward_taps]
-            b = -c[-feedbackward_taps:]
+            a = c[:int(K*N)]
+            b = -c[int(K*N):int(K*N+M)]
             # b = -c[K*N:K*N+M]
-            d_backward_buf = np.insert(d_backward, 0, d_tilde[i])
-            d_backward = d_backward_buf[:feedbackward_taps]
+            d_tilde_buf = np.append(d[n], d_tilde)
+            d_tilde = d_tilde_buf[:M]
 
-        err = d_rls[n_training + 1 : -1] - d_tilde[n_training + 1 : -1]
         mse = 10 * np.log10(
-            np.mean(np.abs(d_rls[n_training + 1 : -1] - d_hat[n_training + 1 : -1]) ** 2)
+            np.mean(np.abs(d[Nt + 1 : -1] - d_hat[Nt + 1 : -1]) ** 2)
         )
-        n_err = np.sum(np.abs(err) > 0.01)
         return d_hat, mse, #n_err, n_training
 
 if __name__ == "__main__":
@@ -347,11 +352,12 @@ if __name__ == "__main__":
         for i in range(len(r_multi[0,:])):
             r = np.squeeze(r_multi[:, i])
             v = r * np.exp(-2 * np.pi * 1j * fc * np.arange(len(r))/fs)
-            # v
-            # v_xcorr = sg.decimate(v, df)
+            v_xcorr = np.copy(v)
             # v = np.convolve(v, rc_rx, "full")
+            #v = sg.decimate(v, df)
+
             if i == 0:
-                xcorr_for_peaks = np.abs(sg.fftconvolve(v, sg.resample_poly(d[::-1].conj(),uf,1))) # correalte and sync at sample rate sg.decimate(v, int(ns)),
+                xcorr_for_peaks = np.abs(sg.fftconvolve(v_xcorr, sg.resample_poly(d[::-1].conj(),uf,1))) # correalte and sync at sample rate sg.decimate(v, int(ns)),
                 xcorr_for_peaks /= xcorr_for_peaks.max()
                 time_axis_xcorr = np.arange(0, len(xcorr_for_peaks)) / R * 1e3  # ms
                 peaks_rx, _ = sg.find_peaks(
@@ -361,6 +367,8 @@ if __name__ == "__main__":
                 #plt.plot(np.abs(xcorr_for_peaks))
                 #plt.show()
             v = v[int(peaks_rx[1]) :] # * ns
+            v = np.convolve(v, rc_rx, "full")
+            #v = sg.decimate(v, df)
             if i == 0:
                 v_multichannel = v
             else:
@@ -372,7 +380,7 @@ if __name__ == "__main__":
         # resample v_multichannel for frac spac
         v_multichannel = sg.resample_poly(v_multichannel,ns_fs,ns,axis=1)
         #v_multichannel = v_multichannel[:,:int(len(v_multichannel)/2)]
-        d_hat, mse_out = dfe_old(v_multichannel, d_adj, ns_fs, n_ff, n_fb)
+        d_hat, mse_out = dfe_matlab(v_multichannel, d_adj, ns_fs, n_ff, n_fb)
         d_hat_adj = (d_hat > 0) * 2 - 1
         #d_hat = lms(v,d,ns)
         mse[ind] = mse_out #10 * np.log10(np.mean(np.abs(d_adj-d_hat) ** 2))
@@ -384,7 +392,7 @@ if __name__ == "__main__":
         plt.title(f'SNR={snr_db[ind]} dB') #(f'd0={d_lambda[ind]}'r'$\lambda$')
 
         # Apply wk and use for downlink
-        
+        """
         s_dl = np.dot(np.reshape(wk,[-1,1]),np.reshape(s,[1,-1]))
         r_single = transmit_dl(s_dl,snr,n_rx,d0,R,fc,fs)
         peaks_dl = 0
@@ -409,6 +417,7 @@ if __name__ == "__main__":
         plt.title(f'SNR={snr_db[ind]} dB')
         plt.suptitle('Uplink and Downlink BPSK Constellation Diagrams')
         plt.legend(['Uplink','Downlink'])
+        """
 
     fig, ax = plt.subplots()
     ax.plot(snr_db,mse,'o')
@@ -418,6 +427,7 @@ if __name__ == "__main__":
     ax.set_title('MSE vs SNR for BPSK Signal')
     plt.show()
 
+    """
     fig, ax = plt.subplots()
     ax.plot(snr_db,mse_dl,'o')
     ax.set_xlabel(r'SNR (dB)')
@@ -425,4 +435,4 @@ if __name__ == "__main__":
     # ax.set_xticks(np.arange(el_spacing[0],el_spacing[-1]))
     ax.set_title('MSE vs SNR for BPSK Signal Downlink')
     plt.show()
-
+    """
