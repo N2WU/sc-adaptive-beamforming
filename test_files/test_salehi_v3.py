@@ -34,8 +34,8 @@ def rrcosfilter(N, alpha, Ts, Fs):
 def transmit(s,snr,n_rx,el_spacing,R,fc,fs):
     reflection_list = np.asarray([1,0.5]) # reflection gains
     n_path = len(reflection_list)  
-    x_tx_list = np.array([50,-10]) #([5,-5]) 
-    y_tx_list = np.array([50,50]) #([20,20])
+    x_tx_list = np.array([5,-5]) 
+    y_tx_list = np.array([20,20])
     c = 343
     duration = 10 # amount of padding, basically
     x_rx = np.arange(0, el_spacing*n_rx, el_spacing)
@@ -89,7 +89,12 @@ def transmit(s,snr,n_rx,el_spacing,R,fc,fs):
     y_tilde = np.zeros((N,n_path), dtype=complex)
     for k in range(N):
         d_tau_m = np.sin(theta_m) * el_spacing/c
-        Sk = np.exp(-2j * np.pi * fk[k] * np.arange(M).reshape(M, 1) @ d_tau_m.reshape(1, n_path))
+        try:
+            d_tau_new = d_tau_m.reshape(1, n_path)
+        except:
+            d_tau_new = np.append(d_tau_m, [0])
+            d_tau_new = d_tau_new.reshape(1, n_path)
+        Sk = np.exp(-2j * np.pi * fk[k] * np.arange(M).reshape(M, 1) @ d_tau_new)
         for i in range(n_path):
             e_pu = np.zeros((n_path,1))
             e_pu[i, 0] = 1
@@ -102,7 +107,30 @@ def transmit(s,snr,n_rx,el_spacing,R,fc,fs):
 
     # processing the signal we get from bf
     r_multichannel_1 = y
-    return r_multichannel_1
+    return r_multichannel_1, wk
+
+def transmit_dl(s_dl,snr,n_rx,el_spacing,R,fc,fs):
+    reflection_list = np.asarray([1,0.5]) # reflection gains
+    n_path = len(reflection_list)  
+    x_rx_list = np.array([5,-5]) 
+    y_rx_list = np.array([20,20])
+    c = 343
+    duration = 10 # amount of padding, basically
+    x_tx = np.arange(0, el_spacing*n_rx, el_spacing)
+    y_tx = np.zeros_like(x_tx)
+    rng = np.random.RandomState(2021)
+    r_single = rng.randn(duration * fs) / snr
+    r_single = r_single.astype('complex')
+    for i in range(len(reflection_list)):
+        x_rx, y_rx = x_rx_list[i], y_rx_list[i]
+        reflection = reflection_list[i] #delay and sum not scale
+        dx, dy = x_rx - x_tx, y_rx - y_tx
+        d_rx_tx = np.sqrt(dx**2 + dy**2)
+        delta_tau = d_rx_tx / c
+        delay = np.round(delta_tau * fs).astype(int) # sample delay
+        for j, delay_j in enumerate(delay):
+            r_single[delay_j:delay_j+len(s)] += reflection * s_dl[j,:]
+    return r_single
 
 def dfe_old(v_rls, d, Ns, feedforward_taps=20, feedbackward_taps=8, alpha_rls=0.98):
         K = len(v_rls[:,0])
@@ -278,7 +306,7 @@ if __name__ == "__main__":
     bits = 7
     rep = 16
     training_rep = 4
-    snr_db = np.array([8, 12, 16, 20])#np.arange(-10,20,2)
+    snr_db = np.array([8, 12, 16, 20]) #np.arange(-10,20,2)
     n_ff = 20
     n_fb = 4
     R = 3000
@@ -289,9 +317,10 @@ if __name__ == "__main__":
     uf = int(fs / R)
     df = int(uf / ns)
     n_rx = 12
-    d_lambda = 0.5 #np.array([0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]) #0.5
+    d_lambda = 0.5 #np.array([0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]) #
     el_spacing = d_lambda*343/fc
     mse = np.zeros(len(snr_db),dtype='float')
+    mse_dl = np.zeros(len(snr_db),dtype='float')
     # init rrc filters with b=0.5
     _, rc_tx = rrcosfilter(16 * int(1 / R * fs), 0.5, 1 / R, fs)
     _, rc_rx = rrcosfilter(16 * int(fs / R), 0.5, 1 / R, fs)
@@ -311,7 +340,7 @@ if __name__ == "__main__":
     for ind in range(len(snr_db)):
         d0 = el_spacing
         snr = 10**(0.1 * snr_db[ind])
-        r_multi = transmit(s,snr,n_rx,d0,R,fc,fs) # should come out as an n-by-zero
+        r_multi, wk = transmit(s,snr,n_rx,d0,R,fc,fs) # should come out as an n-by-zero
         # r_multi = np.tile(s,(n_rx,1)).T
         peaks_rx = 0
         v_multichannel = []
@@ -352,12 +381,48 @@ if __name__ == "__main__":
         plt.scatter(np.real(d_hat), np.imag(d_hat), marker='*')
         plt.axis('square')
         plt.axis([-2, 2, -2, 2])
-        plt.title(f'SNR={snr_db[ind]}dB')
+        plt.title(f'SNR={snr_db[ind]} dB') #(f'd0={d_lambda[ind]}'r'$\lambda$')
+
+        # Apply wk and use for downlink
+        
+        s_dl = np.dot(np.reshape(wk,[-1,1]),np.reshape(s,[1,-1]))
+        r_single = transmit_dl(s_dl,snr,n_rx,d0,R,fc,fs)
+        peaks_dl = 0
+        v_dl = r_single * np.exp(-2 * np.pi * 1j * fc * np.arange(len(r_single))/fs)
+        xcorr_dl = np.abs(sg.fftconvolve(v_dl, sg.resample_poly(d[::-1].conj(),uf,1))) # correalte and sync at sample rate sg.decimate(v, int(ns)),
+        xcorr_dl /= xcorr_dl.max()
+        time_axis_xcorr = np.arange(0, len(xcorr_dl)) / R * 1e3  # ms
+        peaks_dl, _ = sg.find_peaks(
+            xcorr_dl, height=0.2, distance=len(d) - 100
+        )
+        v_dl = v_dl[int(peaks_dl[1]) :] # * ns
+        d_adj = np.tile(d,rep)
+        v_dl = v_dl[None,:]
+        # resample v_multichannel for frac spac
+        v_dl = sg.resample_poly(v_dl,ns_fs,ns,axis=1)
+        d_hat_dl, mse_out_dl = dfe_old(v_dl, d_adj, ns_fs, n_ff, n_fb)
+        mse_dl[ind] = mse_out_dl
+        plt.subplot(2, 2, int(ind+1))
+        plt.scatter(np.real(d_hat_dl), np.imag(d_hat_dl), marker='*')
+        plt.axis('square')
+        plt.axis([-2, 2, -2, 2])
+        plt.title(f'SNR={snr_db[ind]} dB')
+        plt.suptitle('Uplink and Downlink BPSK Constellation Diagrams')
+        plt.legend(['Uplink','Downlink'])
 
     fig, ax = plt.subplots()
     ax.plot(snr_db,mse,'o')
     ax.set_xlabel(r'SNR (dB)')
     ax.set_ylabel('MSE (dB)')
-    #ax.set_xticks(np.arange(el_spacing[0],el_spacing[-1],5))
+    # ax.set_xticks(np.arange(el_spacing[0],el_spacing[-1]))
     ax.set_title('MSE vs SNR for BPSK Signal')
     plt.show()
+
+    fig, ax = plt.subplots()
+    ax.plot(snr_db,mse_dl,'o')
+    ax.set_xlabel(r'SNR (dB)')
+    ax.set_ylabel('MSE (dB)')
+    # ax.set_xticks(np.arange(el_spacing[0],el_spacing[-1]))
+    ax.set_title('MSE vs SNR for BPSK Signal Downlink')
+    plt.show()
+
