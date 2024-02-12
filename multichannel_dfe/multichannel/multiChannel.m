@@ -33,45 +33,24 @@ Ns = 7;
 Nplus = 4;
 vk = [];
 for k = 1:K0    % repeat v 10 K0 times, add noise to each signal
-Tmp=40/1000;
-% tau=(3+[0 5 7 14 27 33])/1000;
-tau = (3+randi(33,1,6))/1000;
-h=exp(-tau/Tmp); h=h/sqrt(sum(abs(h)));
-taus=tau/Ts; taus=round(taus);
-
-snr=15; SNR=10^(snr/10);
-
-v=1; c=350; a=v/c; fd=a*fc; 
-
-lenv=length(u)+max(taus);
-v=zeros(1,lenv);
-for p=1:length(tau)
-    taup=taus(p);
-    vp=[zeros(1,taup) h(p)*u];vp(lenv)=0;
-    v=v+vp;
-end
-v=v/sqrt(pwr(v)); 
-if passband==0 
-    vs=resample(v,Fs,fs);
-    vr=resample(vs,10^4,round((1+a)*10^4));
-    vr=vr.*exp(1i*2*pi*fd*[0:length(vr)-1]/Fs);
-    v=decimate(vr,Fs/fs); %vbase=v;
-end
-if passband==1
-    vs=resample(v,Fs,fs);
-    s=real(vs.*exp(1i*2*pi*fc*(0:length(vs)-1)/Fs));
-    r=resample(s,10^4,round((1+a)*10^4)); % r(t)=s((1+a)t);
-    vr=2*r.*exp(-1i*2*pi*fc*(0:length(r)-1)/Fs);
-    v=decimate(vr,Fs/fs); %vpass=v;
-end
-
-v0 = v;
-%%
-% K0 = 100; % number of channels
-% Ns = 7;
-% Nplus = 4;
-% vk = [];
-% for k = 1:K0
+    Tmp=40/1000;
+    tau = (3+randi(33,1,6))/1000;
+    h=exp(-tau/Tmp); h=h/sqrt(sum(abs(h)));
+    taus=tau/Ts; taus=round(taus);
+    
+    snr=15; SNR=10^(snr/10);
+    
+    v=1; c=350; a=v/c; fd=a*fc; 
+    
+    lenv=length(u)+max(taus);
+    v=zeros(1,lenv);
+    for p=1:length(tau)
+        taup=taus(p);
+        vp=[zeros(1,taup) h(p)*u];vp(lenv)=0;
+        v=v+vp;
+    end
+    v=v/sqrt(pwr(v)); 
+    v0 = v;
     v = v0;
     z=sqrt(1/(2*SNR))*randn(size(v))+1i*sqrt(1/(2*SNR))*randn(size(v));
     v=v+z;
@@ -98,9 +77,7 @@ end
 %%
 
 figure
-K_list = [1,2,5,8];
-for K = K_list
-
+K = length(vk(:,1));
 Ns = 2;
 N=6*Ns; M=ceil(Tmp/T); delta=10^(-3); Nt=4*(N+M); FS=2;
 Kf1=0.001; Kf2=Kf1/10; Lf=1; L=0.98;
@@ -165,15 +142,7 @@ end
 
 
 % plot
-
-subplot(2,2,find(K_list == K))
 plot(d_hat(Nt:end), '*');
 axis('square')
 axis([-2 2 -2 2]);
 title(['K=',num2str(K),' SNR=',num2str(snr),'dB'])
-
-% subplot(122)
-% plot(10*log10(et))
-% axis('square')
-
-end

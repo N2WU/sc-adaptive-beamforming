@@ -107,7 +107,7 @@ def transmit(s,snr,n_rx,el_spacing,R,fc,fs):
 
     # processing the signal we get from bf
     r_multichannel_1 = y
-    return r_multichannel_1, wk
+    return r_multichannel, wk
 
 def transmit_dl(s_dl,snr,n_rx,el_spacing,R,fc,fs):
     reflection_list = np.asarray([1,0.5]) # reflection gains
@@ -219,7 +219,7 @@ def dfe_old(v_rls, d, Ns, feedforward_taps=20, feedbackward_taps=8, alpha_rls=0.
         n_err = np.sum(np.abs(err) > 0.01)
         return d_hat, mse, #n_err, n_training
 
-def dfe_matlab(v_rls, d, Ns, feedforward_taps=20, feedbackward_taps=8, alpha_rls=0.5): #, filename='data/r_multichannel.npy'
+def dfe_matlab(v_rls, d, Ns, Nd, feedforward_taps=20, feedbackward_taps=8, alpha_rls=0.5): #, filename='data/r_multichannel.npy'
         K = len(v_rls[:,0]) # maximum
         Ns = 2
         N = int(6 * Ns)
@@ -227,7 +227,7 @@ def dfe_matlab(v_rls, d, Ns, feedforward_taps=20, feedbackward_taps=8, alpha_rls
         delta = 0.001
         Nt = 4*(N+M)
         FS = 2
-        Kf1 = 0.001
+        Kf1 = 0.000
         Kf2 = Kf1/10
         Lf1 = 1
         L = 0.98
@@ -237,7 +237,6 @@ def dfe_matlab(v_rls, d, Ns, feedforward_taps=20, feedbackward_taps=8, alpha_rls
 
         v = v_rls[:K,]
 
-        Nd = 3000
         f = np.zeros((Nd,K))
         
         a = np.zeros(int(K*N), dtype=complex)
@@ -260,7 +259,7 @@ def dfe_matlab(v_rls, d, Ns, feedforward_taps=20, feedbackward_taps=8, alpha_rls
                xn[k,:] *= np.exp(-1j * f[n,k])
             xn = np.fliplr(xn)
             x = np.concatenate((xn, x), axis=1)
-            x = x[:,:N]
+            x = x[:,:N] # in matlab, this appends zeros
 
             for k in range(K):
                 p[k] = np.inner(x[k,:], a[k*N:(k+1)*N].conj())
@@ -353,7 +352,7 @@ if __name__ == "__main__":
             r = np.squeeze(r_multi[:, i])
             v = r * np.exp(-2 * np.pi * 1j * fc * np.arange(len(r))/fs)
             v_xcorr = np.copy(v)
-            # v = np.convolve(v, rc_rx, "full")
+            v = np.convolve(v, rc_rx, "full")
             #v = sg.decimate(v, df)
 
             if i == 0:
@@ -367,7 +366,7 @@ if __name__ == "__main__":
                 #plt.plot(np.abs(xcorr_for_peaks))
                 #plt.show()
             v = v[int(peaks_rx[1]) :] # * ns
-            v = np.convolve(v, rc_rx, "full")
+
             if i == 0:
                 v_multichannel = v
             else:
@@ -377,12 +376,15 @@ if __name__ == "__main__":
         if n_rx == 1:
             v_multichannel = v_multichannel[None,:]
         # resample v_multichannel for frac spac
-        #v_multichannel = sg.resample_poly(v_multichannel,ns_fs,1,axis=1)
+        v_multichannel = sg.resample_poly(v_multichannel,ns_fs,ns,axis=1)
         #v_multichannel = v_multichannel[:,:int(len(v_multichannel)/2)]
-        d_hat, mse_out = dfe_matlab(v_multichannel, d_adj, ns_fs, n_ff, n_fb)
+        d_hat, mse_out = dfe_matlab(v_multichannel, d_adj, ns_fs, len(d_adj), n_ff, n_fb)
         d_hat_adj = (d_hat > 0) * 2 - 1
         #d_hat = lms(v,d,ns)
-        mse[ind] = mse_out #10 * np.log10(np.mean(np.abs(d_adj-d_hat) ** 2))
+        mse[ind] = 10 * np.log10(
+            np.mean(np.abs(d_adj[300 + 1 :] - d_hat[300 + 1 :]) ** 2)
+        )
+        
         # plot const
         plt.subplot(2, 2, int(ind+1))
         plt.scatter(np.real(d_hat), np.imag(d_hat), marker='*')
@@ -434,4 +436,5 @@ if __name__ == "__main__":
     # ax.set_xticks(np.arange(el_spacing[0],el_spacing[-1]))
     ax.set_title('MSE vs SNR for BPSK Signal Downlink')
     plt.show()
+
     """
