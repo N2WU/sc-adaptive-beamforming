@@ -273,7 +273,7 @@ def dfe_matlab(v_rls, d, Ns, feedforward_taps=20, feedbackward_taps=8, alpha_rls
                 d[n] = (d_hat[n] > 0)*2 - 1
 
             e = d[n]- d_hat[n]
-            et += np.abs(e ** 2)
+            et[n] = np.abs(e ** 2)
 
             # y = np.concatenate((x * np.exp(-1j * theta[i]), d_backward))
             # y = np.concatenate((x.reshape(K*feedforward_taps), d_backward))
@@ -368,7 +368,6 @@ if __name__ == "__main__":
                 #plt.show()
             v = v[int(peaks_rx[1]) :] # * ns
             v = np.convolve(v, rc_rx, "full")
-            #v = sg.decimate(v, df)
             if i == 0:
                 v_multichannel = v
             else:
@@ -378,7 +377,7 @@ if __name__ == "__main__":
         if n_rx == 1:
             v_multichannel = v_multichannel[None,:]
         # resample v_multichannel for frac spac
-        v_multichannel = sg.resample_poly(v_multichannel,ns_fs,ns,axis=1)
+        #v_multichannel = sg.resample_poly(v_multichannel,ns_fs,1,axis=1)
         #v_multichannel = v_multichannel[:,:int(len(v_multichannel)/2)]
         d_hat, mse_out = dfe_matlab(v_multichannel, d_adj, ns_fs, n_ff, n_fb)
         d_hat_adj = (d_hat > 0) * 2 - 1
