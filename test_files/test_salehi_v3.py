@@ -2,6 +2,48 @@ import numpy as np
 import scipy.signal as sg
 import matplotlib.pyplot as plt
 
+def rcos(alpha, Ns, trunc):
+    tn = np.arange(-trunc * Ns, trunc * Ns) / Ns
+    p = np.sinc(tn) * np.cos(np.pi * alpha * tn) / (1 - 4 * alpha**2 * tn**2)
+    p[np.isnan(p)] = 0  # Replace NaN with 0
+    p[np.isinf(p)] = 0
+    p[Ns * trunc] = 1
+    return p
+
+def fdel(v, u):
+    N = np.ceil(np.log2(len(v)))  # First 2^N that will do
+    times = (np.fft.fft(v, int(2**N)) * np.conj(np.fft.fft(u, int(2**N))))
+    x = np.fft.ifft(times)
+    del_val = np.argmax(x)
+    return del_val, x
+
+def fdop(v, u, fs, Ndes):
+    x = v * np.conj(u)
+    N = int(np.ceil(np.log2(len(x))))  # First 2^N that will do
+    if Ndes > N:
+        N = Ndes
+
+    X = np.fft.fft(x, 2**N) / len(x)
+    X = np.fft.fftshift(X)
+
+    f = ((np.arange(1, 2**N + 1) - 2**(N - 1) - 1) / (2**N)) * fs
+
+    m, i = np.max(X), np.argmax(X)
+    fd = f[i]
+
+    return fd, X, N
+
+def fil(d, p, Ns):
+    d = d.astype(complex)
+    N = len(d)
+    Lp = len(p)
+    Ld = Ns * N
+    u = np.zeros(Lp + Ld - Ns,dtype=complex)
+    for n in range(len(d)):
+        window = np.arange(int(n*Ns), int(n*Ns + Lp))
+        u[window] =  u[window] + d[n] * p
+    return u
+
 def upsample(s, n, phase=0):
     return np.roll(np.kron(s, np.r_[1, np.zeros(n - 1)]), phase)
 
@@ -52,6 +94,7 @@ def transmit(s,snr,n_rx,el_spacing,R,fc,fs):
         for j, delay_j in enumerate(delay):
             r_multichannel[delay_j:delay_j+len(s), j] += reflection * s
     
+
     M = 12
     r = r_multichannel[:,:M]
     r_fft = np.fft.fft(r, axis=0)
@@ -249,7 +292,7 @@ def dfe_matlab(v_rls, d, Ns, Nd, feedforward_taps=20, feedbackward_taps=8, alpha
         et = np.zeros(Nd, dtype=complex)
         d_hat = np.zeros_like(d, dtype=complex)
 
-        for n in range(len(d)-1):
+        for n in range(Nd-1):
             nb = (n) * Ns + (Nplus - 1) * Ns - 1
             xn = v[
                 :, int(nb + np.ceil(Ns / FS / 2)) : int(nb + Ns)
@@ -301,7 +344,7 @@ def dfe_matlab(v_rls, d, Ns, Nd, feedforward_taps=20, feedbackward_taps=8, alpha
             d_tilde = d_tilde_buf[:M]
 
         mse = 10 * np.log10(
-            np.mean(np.abs(d[Nt + 1 : -1] - d_hat[Nt + 1 : -1]) ** 2)
+            np.mean(np.abs(d[Nt : -1] - d_hat[Nt : -1]) ** 2)
         )
         return d_hat, mse, #n_err, n_training
 
@@ -354,7 +397,6 @@ if __name__ == "__main__":
             v_xcorr = np.copy(v)
             v = np.convolve(v, rc_rx, "full")
             #v = sg.decimate(v, df)
-
             if i == 0:
                 xcorr_for_peaks = np.abs(sg.fftconvolve(v_xcorr, sg.resample_poly(d[::-1].conj(),uf,1))) # correalte and sync at sample rate sg.decimate(v, int(ns)),
                 xcorr_for_peaks /= xcorr_for_peaks.max()
@@ -366,13 +408,21 @@ if __name__ == "__main__":
                 #plt.plot(np.abs(xcorr_for_peaks))
                 #plt.show()
             v = v[int(peaks_rx[1]) :] # * ns
-
+            g=rcos(0.25,ns,4)
+            d_adj = np.tile(d,rep)
+            up=fil(d,g,ns)
+            ud=fil(d_adj,g,ns)
+            u=np.concatenate((up, np.zeros(100*ns), ud))
+            vp = v[:len(up)+100*ns]
+            vdel, _ = fdel(vp,up)
+            v = v[vdel:vdel+len(u)]
+            v = v[len(up)+100*ns+4*ns+1:]
             if i == 0:
                 v_multichannel = v
             else:
                 v_multichannel = np.vstack((v_multichannel,v))
         # dfe
-        d_adj = np.tile(d,rep)
+        # d_adj = np.tile(d,rep)
         if n_rx == 1:
             v_multichannel = v_multichannel[None,:]
         # resample v_multichannel for frac spac
@@ -382,7 +432,7 @@ if __name__ == "__main__":
         d_hat_adj = (d_hat > 0) * 2 - 1
         #d_hat = lms(v,d,ns)
         mse[ind] = 10 * np.log10(
-            np.mean(np.abs(d_adj[300 + 1 :] - d_hat[300 + 1 :]) ** 2)
+            np.mean(np.abs(d_adj[300 :] - d_hat[300 :]) ** 2)
         )
         
         # plot const

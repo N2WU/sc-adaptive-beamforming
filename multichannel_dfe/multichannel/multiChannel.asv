@@ -24,7 +24,7 @@ d=sign(randn(1,Nd))+1i*sign(randn(1,Nd));d=d/sqrt(2);
 ud=fil(d,g,Ns);
 u=[up zeros(1,Nz*Ns) ud];
 us=resample(u,Fs,fs);
-s=real(us.*exp(1i*2*pi*fc*(0:length(us)-1)/Fs));
+%s=real(us.*exp(1i*2*pi*fc*(0:length(us)-1)/Fs));
 
 save bhaskar1 s d Fs
 K0 = 10;
@@ -32,17 +32,13 @@ Ns = 7;
 Nplus = 4;
 vk = [];
 for k = 1:K0    % repeat v 10 K0 times, add noise to each signal
-    Tmp=0; %s40/1000;
-    %tau = (3+randi(33,1,6))/1000;
-    %h=exp(-tau/Tmp); h=h/sqrt(sum(abs(h)));
-    %taus=tau/Ts; taus=round(taus);
+    Tmp=0;
     
     snr=300; SNR=10^(snr/10);
 
     v=zeros(1,length(u));
 
-    vp=u; 
-    vp(length(u))=0;
+    vp=u;vp(length(u))=0;
     v=v+vp;
 
     v=v/sqrt(pwr(v)); 
