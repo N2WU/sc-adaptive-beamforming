@@ -76,7 +76,7 @@ def dfe_matlab(vk, d, Ns, Nd): #, filename='data/r_multichannel.npy'
 
         v = vk[:K,]
 
-        f = np.zeros((Nd,K))
+        f = np.zeros((Nd,K),dtype=complex)
         
         a = np.zeros(int(K*N), dtype=complex)
         b = np.zeros(M, dtype=complex)
@@ -88,11 +88,11 @@ def dfe_matlab(vk, d, Ns, Nd): #, filename='data/r_multichannel.npy'
         et = np.zeros(Nd, dtype=complex)
         d_hat = np.zeros_like(d, dtype=complex)
 
-        for n in range(Nd-1):
-            nb = (n) * Ns + (Nplus - 1) * Ns - 1
+        for n in range(1,Nd-1):
+            nb = (n-1) * Ns + (Nplus - 1) * Ns
             xn = v[
                 :, int(nb + np.ceil(Ns / FS / 2)) : int(nb + Ns)
-                + 1 : int(Ns / FS)
+                : int(Ns / FS)
             ]
             for k in range(K):
                xn[k,:] *= np.exp(-1j * f[n,k])
@@ -100,8 +100,8 @@ def dfe_matlab(vk, d, Ns, Nd): #, filename='data/r_multichannel.npy'
             x = np.concatenate((xn, x), axis=1)
             x = x[:,:N] # in matlab, this appends zeros
 
-            for k in range(K):
-                p[k] = np.inner(x[k,:], a[k*N:(k+1)*N].conj())
+            for k in range(1,K):
+                p[k] = np.inner(x[k,:], a[(k-1)*N:k*N].conj())
             psum = p.sum()
 
             q = np.inner(d_tilde, b.conj())
@@ -114,13 +114,10 @@ def dfe_matlab(vk, d, Ns, Nd): #, filename='data/r_multichannel.npy'
             e = d[n]- d_hat[n]
             et[n] = np.abs(e ** 2)
 
-            # y = np.concatenate((x * np.exp(-1j * theta[i]), d_backward))
-            # y = np.concatenate((x.reshape(K*feedforward_taps), d_backward))
-
             # PLL
             phi = np.imag(p * np.conj(p+e))
             Sf = Sf + phi
-            f[n,:] = f[n,:] + Kf1*phi + Kf2*Sf
+            f[n+1,:] = f[n,:] + Kf1*phi + Kf2*Sf
 
             y = np.reshape(x.T,(1,int(K*N)))
             y = np.append(y,d_tilde)
@@ -143,6 +140,8 @@ def dfe_matlab(vk, d, Ns, Nd): #, filename='data/r_multichannel.npy'
         mse = 10 * np.log10(
             np.mean(np.abs(d[Nt : -1] - d_hat[Nt : -1]) ** 2)
         )
+        if np.isnan(mse):
+            mse = 100
         return d_hat, mse, #n_err, n_training
 
 if __name__ == "__main__":
@@ -185,31 +184,32 @@ if __name__ == "__main__":
     # generate rx signal with ISI
     for ind in range(len(snr_db)):
         snr = 10**(0.1 * snr_db[ind])
-        Tmp = 0
-        v = np.zeros(len(u))
-        vp = u
-        vp[-1] = 0
-        v = v+vp # right now v is huge
-        
-        v = v/np.sqrt(pwr(v))
-        v0 = v
-        v = v0
-        vk = np.zeros((K0,int(len(v)*2/Ns+Nplus*2)),dtype='complex')
         for k in range(K0):
+            Tmp = 0
+            v = np.zeros(len(u),dtype=complex)
+            vp = u
+            vp[-1] = 0
+            v = v+vp # right now v is huge
+            
+            v /= np.sqrt(pwr(v))
+            v0 = v
+            v = v0
             z = np.sqrt(1/(2*snr))*np.random.randn(np.size(v)) + 1j*np.sqrt(1/(2*snr))*np.random.randn(np.size(v))
-            v = v + z-z
+            v = v + z
             v = v[lenu+Nz*Ns+4*Ns+1:]
 
             v = sg.resample_poly(v,2,Ns)
             v = np.concatenate((v,np.zeros(Nplus*2)))
-
-            vk[k,:len(v)] = v
+            if k==0:
+                vk = np.zeros((K0,len(v)),dtype=complex)
+            vk[k,:] = v
 
         d_hat, mse_out = dfe_matlab(vk, d, Ns, Nd)
-        mse[ind] = 10 * np.log10(
-            np.mean(np.abs(d[300 :] - d_hat[300 :]) ** 2)
-        )
-        
+        #mse[ind] = 10 * np.log10(
+        #    np.mean(np.abs(d[300 :] - d_hat[300 :]) ** 2)
+        #)
+        mse[ind] = mse_out
+
         # plot const
         plt.subplot(2, 2, int(ind+1))
         plt.scatter(np.real(d_hat), np.imag(d_hat), marker='*')
