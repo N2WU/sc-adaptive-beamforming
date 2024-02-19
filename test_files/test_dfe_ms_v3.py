@@ -203,7 +203,9 @@ if __name__ == "__main__":
             if k==0:
                 vk = np.zeros((K0,len(v)),dtype=complex)
             vk[k,:] = v
-
+        np.save('vk_real.npy',np.real(vk))
+        np.save('vk_imag.npy',np.imag(vk))
+        # vk = np.load('test_files/vk1.npy')
         d_hat, mse_out = dfe_matlab(vk, d, Ns, Nd)
         #mse[ind] = 10 * np.log10(
         #    np.mean(np.abs(d[300 :] - d_hat[300 :]) ** 2)

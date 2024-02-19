@@ -14,8 +14,6 @@ alpha=0.25;trunc=4;
 Ns=7; T=Ns*Ts; R=1/T; B=R*(1+alpha);
 Nso=Ns;
 
-%fmin=(fc-B/2)/1000, fmax=(fc+B/2)/1000, R/1000
-
 g=rcos(alpha,Ns,trunc);
 up=fil(dp,g,Ns);
 lenu=length(up);
@@ -26,16 +24,13 @@ u=[up zeros(1,Nz*Ns) ud];
 us=resample(u,Fs,fs);
 s=real(us.*exp(1i*2*pi*fc*(0:length(us)-1)/Fs));
 
-save bhaskar1 s d Fs
 K0 = 10;
 Ns = 7;
 Nplus = 4;
 vk = [];
+%{
 for k = 1:K0    % repeat v 10 K0 times, add noise to each signal
-    Tmp=0; %s40/1000;
-    %tau = (3+randi(33,1,6))/1000;
-    %h=exp(-tau/Tmp); h=h/sqrt(sum(abs(h)));
-    %taus=tau/Ts; taus=round(taus);
+    Tmp=0;
     
     snr=300; SNR=10^(snr/10);
 
@@ -61,12 +56,16 @@ for k = 1:K0    % repeat v 10 K0 times, add noise to each signal
     v = [v zeros(1,Nplus*2)];
     vk(k,:) = v;
 end
-
+%} 
 %%
+vk_real = readNPY('vk_real.npy');
+vk_imag = readNPY('vk_imag.npy');
+vk = vk_real + 1j*vk_imag;
 
 figure
 K = length(vk(:,1));
 Ns = 2;
+Tmp = 0;
 N=6*Ns; M=ceil(Tmp/T); delta=10^(-3); Nt=4*(N+M); FS=2;
 Kf1=0.001; Kf2=Kf1/10; Lf=1; L=0.98;
 P = eye(K*N+M)/delta;
@@ -130,6 +129,7 @@ end
 
 
 % plot
+snr=300; SNR=10^(snr/10);
 plot(d_hat(Nt:end), '*');
 axis('square')
 axis([-2 2 -2 2]);
