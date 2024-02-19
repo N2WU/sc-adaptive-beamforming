@@ -2,12 +2,15 @@ import numpy as np
 import scipy.signal as sg
 import matplotlib.pyplot as plt
 
+# 2024-02-19: init commit
+# this code simulates two-path refelct environment from uplink to downlink
+
 def rcos(alpha, Ns, trunc):
-    tn = np.arange(-trunc * Ns, trunc * Ns) / Ns
-    p = np.sinc(tn) * np.cos(np.pi * alpha * tn) / (1 - 4 * alpha**2 * tn**2)
+    tn = np.arange(-trunc * Ns, trunc * Ns+1) / Ns
+    p = np.sin(np.pi* tn)/(np.pi*tn) * np.cos(np.pi * alpha * tn) / (1 - 4 * (alpha**2) * (tn**2))
     p[np.isnan(p)] = 0  # Replace NaN with 0
     p[np.isinf(p)] = 0
-    p[Ns * trunc] = 1
+    p[-1] = 1
     return p
 
 def fdel(v, u):
@@ -26,7 +29,8 @@ def fdop(v, u, fs, Ndes):
     X = np.fft.fft(x, 2**N) / len(x)
     X = np.fft.fftshift(X)
 
-    f = ((np.arange(1, 2**N + 1) - 2**(N - 1) - 1) / (2**N)) * fs
+    f = (np.arange(2**N)-(2**N)/2 -1)/(2**N)*fs
+    #f = ((np.arange(1, 2**N + 1) - 2**(N - 1) - 1) / (2**N)) * fs
 
     m, i = np.max(X), np.argmax(X)
     fd = f[i]
@@ -39,39 +43,14 @@ def fil(d, p, Ns):
     Lp = len(p)
     Ld = Ns * N
     u = np.zeros(Lp + Ld - Ns,dtype=complex)
-    for n in range(len(d)):
+    for n in range(N-1):
         window = np.arange(int(n*Ns), int(n*Ns + Lp))
         u[window] =  u[window] + d[n] * p
     return u
 
-def upsample(s, n, phase=0):
-    return np.roll(np.kron(s, np.r_[1, np.zeros(n - 1)]), phase)
-
-def rrcosfilter(N, alpha, Ts, Fs):
-    T_delta = 1 / float(Fs)
-    time_idx = ((np.arange(N) - N / 2)) * T_delta
-    sample_num = np.arange(N)
-    h_rrc = np.zeros(N, dtype=float)
-    for x in sample_num:
-        t = (x - N / 2) * T_delta
-        if t == 0.0:
-            h_rrc[x] = 1.0 - alpha + (4 * alpha / np.pi)
-        elif alpha != 0 and t == Ts / (4 * alpha):
-            h_rrc[x] = (alpha / np.sqrt(2)) * (
-                ((1 + 2 / np.pi) * (np.sin(np.pi / (4 * alpha))))
-                + ((1 - 2 / np.pi) * (np.cos(np.pi / (4 * alpha))))
-            )
-        elif alpha != 0 and t == -Ts / (4 * alpha):
-            h_rrc[x] = (alpha / np.sqrt(2)) * (
-                ((1 + 2 / np.pi) * (np.sin(np.pi / (4 * alpha))))
-                + ((1 - 2 / np.pi) * (np.cos(np.pi / (4 * alpha))))
-            )
-        else:
-            h_rrc[x] = (
-                np.sin(np.pi * t * (1 - alpha) / Ts)
-                + 4 * alpha * (t / Ts) * np.cos(np.pi * t * (1 + alpha) / Ts)
-            ) / (np.pi * t * (1 - (4 * alpha * t / Ts) * (4 * alpha * t / Ts)) / Ts)
-    return time_idx, h_rrc
+def pwr(x):
+    p = np.sum(np.abs(x)**2)/len(x)
+    return p
 
 def transmit(s,snr,n_rx,el_spacing,R,fc,fs):
     reflection_list = np.asarray([1,0.5]) # reflection gains
@@ -175,102 +154,24 @@ def transmit_dl(s_dl,snr,n_rx,el_spacing,R,fc,fs):
             r_single[delay_j:delay_j+len(s)] += reflection * s_dl[j,:]
     return r_single
 
-def dfe_old(v_rls, d, Ns, feedforward_taps=20, feedbackward_taps=8, alpha_rls=0.98):
-        K = len(v_rls[:,0])
-        delta = 0.001
-        Nplus = 2
-        n_training = int(4 * (feedforward_taps + feedbackward_taps) / Ns)
-        fractional_spacing = ns_fs
-        K_1 = 0.0000 # PLL shits everything up
-        K_2 = K_1 / 10
+def dec4psk(x):
+    xr = np.real(x)
+    xi = np.imag(x)
+    dr = np.sign(xr)
+    di = np.sign(xi)
+    d = dr+1j*di
+    d = d/np.sqrt(2)
+    return d
 
-        # v_rls = np.tile(v, (K, 1))
-        d_rls = d
-        x = np.zeros((K,feedforward_taps), dtype=complex)
-        a = np.zeros((K*feedforward_taps,), dtype=complex)
-        b = np.zeros((feedbackward_taps,), dtype=complex)
-        c = np.concatenate((a, -b))
-        theta = np.zeros((len(d_rls),K), dtype=float)
-        d_hat = np.zeros((len(d_rls),), dtype=complex)
-        d_tilde = np.zeros((len(d_rls),), dtype=complex)
-        d_backward = np.zeros((feedbackward_taps,), dtype=complex)
-        e = np.zeros((len(d_rls),), dtype=complex)
-        Q = np.eye(K*feedforward_taps + feedbackward_taps) / delta
-        pk = np.zeros((K,), dtype=complex)
-
-        cumsum_phi = 0.0
-        sse = 0.0
-        for i in np.arange(len(d_rls) - 1, dtype=int):
-            nb = (i) * Ns + (Nplus - 1) * Ns - 1
-            xn = v_rls[
-                :, int(nb + np.ceil(Ns / fractional_spacing / 2)) : int(nb + Ns)
-                + 1 : int(Ns / fractional_spacing)
-            ]
-            for j in range(K):
-                xn[j,:] *= np.exp(-1j * theta[i,j])
-            x_buf = np.concatenate((xn, x), axis=1)
-            x = x_buf[:,:feedforward_taps]
-
-            # p = np.inner(x, a.conj()) * np.exp(-1j * theta[i])
-            for j in range(K):
-                pk[j] = np.inner(x[j,:], a[j*feedforward_taps:(j+1)*feedforward_taps].conj())
-            p = pk.sum()
-
-            q = np.inner(d_backward, b.conj())
-            d_hat[i] = p - q
-
-            if i > n_training:
-                d_tilde[i] = (d_hat[i] > 0)*2 - 1
-            else:
-                d_tilde[i] = d_rls[i]
-            e[i] = d_tilde[i] - d_hat[i]
-            sse += np.abs(e[i] ** 2)
-
-            # y = np.concatenate((x * np.exp(-1j * theta[i]), d_backward))
-            y = np.concatenate((x.reshape(K*feedforward_taps), d_backward))
-
-            # PLL
-            phi = np.imag(p * np.conj(d_tilde[i] + q))
-            cumsum_phi += phi
-            theta[i + 1] = theta[i] + K_1 * phi + K_2 * cumsum_phi
-
-            # RLS
-            k = (
-                np.matmul(Q, y.T)
-                / alpha_rls
-                / (1 + np.matmul(np.matmul(y.conj(), Q), y.T) / alpha_rls)
-            )
-            #k_buf = Q/alpha_rls
-            #k_denom = 1+np.matmul(np.matmul(y.conj(),k_buf),y.T)
-            #k = np.matmul(k_buf,y.T) / k_denom
-            c += k.T * e[i].conj()
-            Q = Q / alpha_rls - np.matmul(np.outer(k, y.conj()), Q) / alpha_rls
-            #Q = Q / alpha_rls - np.matmul(np.matmul(k.reshape(1,-1), y.conj()), Q) / alpha_rls 
-            # Q = Q / alpha_rls - np.matmul(k.reshape(1,-1), y.conj()) * Q / alpha_rls 
-
-            a = c[:K*feedforward_taps]
-            b = -c[-feedbackward_taps:]
-            # b = -c[K*N:K*N+M]
-
-            d_backward_buf = np.insert(d_backward, 0, d_tilde[i])
-            d_backward = d_backward_buf[:feedbackward_taps]
-
-        err = d_rls[n_training + 1 : -1] - d_tilde[n_training + 1 : -1]
-        mse = 10 * np.log10(
-            np.mean(np.abs(d_rls[n_training + 1 : -1] - d_hat[n_training + 1 : -1]) ** 2)
-        )
-        n_err = np.sum(np.abs(err) > 0.01)
-        return d_hat, mse, #n_err, n_training
-
-def dfe_matlab(v_rls, d, Ns, Nd, feedforward_taps=20, feedbackward_taps=8, alpha_rls=0.5): #, filename='data/r_multichannel.npy'
-        K = len(v_rls[:,0]) # maximum
+def dfe_matlab(vk, d, Ns, Nd): 
+        K = len(vk[:,0]) # maximum
         Ns = 2
         N = int(6 * Ns)
-        M = int(63)
-        delta = 0.001
+        M = int(0)
+        delta = 10**(-3)
         Nt = 4*(N+M)
         FS = 2
-        Kf1 = 0.000
+        Kf1 = 0.001
         Kf2 = Kf1/10
         Lf1 = 1
         L = 0.98
@@ -278,9 +179,9 @@ def dfe_matlab(v_rls, d, Ns, Nd, feedforward_taps=20, feedbackward_taps=8, alpha
         Lbf = 0.99
         Nplus = 4
 
-        v = v_rls[:K,]
+        v = vk[:K,]
 
-        f = np.zeros((Nd,K))
+        f = np.zeros((Nd,K),dtype=complex)
         
         a = np.zeros(int(K*N), dtype=complex)
         b = np.zeros(M, dtype=complex)
@@ -293,10 +194,10 @@ def dfe_matlab(v_rls, d, Ns, Nd, feedforward_taps=20, feedbackward_taps=8, alpha
         d_hat = np.zeros_like(d, dtype=complex)
 
         for n in range(Nd-1):
-            nb = (n) * Ns + (Nplus - 1) * Ns - 1
+            nb = (n) * Ns + (Nplus - 1) * Ns
             xn = v[
-                :, int(nb + np.ceil(Ns / FS / 2)) : int(nb + Ns)
-                + 1 : int(Ns / FS)
+                :, int(nb + np.ceil(Ns / FS / 2)-1) : int(nb + Ns)
+                : int(Ns / FS)
             ]
             for k in range(K):
                xn[k,:] *= np.exp(-1j * f[n,k])
@@ -305,36 +206,34 @@ def dfe_matlab(v_rls, d, Ns, Nd, feedforward_taps=20, feedbackward_taps=8, alpha
             x = x[:,:N] # in matlab, this appends zeros
 
             for k in range(K):
-                p[k] = np.inner(x[k,:], a[k*N:(k+1)*N].conj())
+                p[k] = np.inner(x[k,:], np.conj(a[(k*N):(k+1)*N]))
             psum = p.sum()
 
             q = np.inner(d_tilde, b.conj())
             d_hat[n] = psum - q
 
             if n > Nt:
-                d[n] = (d_hat[n] > 0)*2 - 1
+                #d[n] = (d_hat[n] > 0)*2 - 1
+                d[n] = dec4psk(d_hat[n])
 
             e = d[n]- d_hat[n]
             et[n] = np.abs(e ** 2)
 
-            # y = np.concatenate((x * np.exp(-1j * theta[i]), d_backward))
-            # y = np.concatenate((x.reshape(K*feedforward_taps), d_backward))
-
             # PLL
             phi = np.imag(p * np.conj(p+e))
             Sf = Sf + phi
-            f[n,:] = f[n,:] + Kf1*phi + Kf2*Sf
+            f[n+1,:] = f[n,:] + Kf1*phi + Kf2*Sf
 
-            y = np.reshape(x.T,(1,int(K*N)))
+            y = np.reshape(x,(1,int(K*N)))
             y = np.append(y,d_tilde)
 
             # RLS
             k = (
-                np.matmul(P, y.T)
+                np.matmul(P, y)
                 / L
-                / (1 + np.matmul(np.matmul(y.conj(), P), y.T) / L)
+                / (1 + np.matmul(np.matmul(y.conj(), P), y) / L)
             )
-            c += k.T * e.conj()
+            c += k * e.conj()
             P = P / L - np.matmul(np.outer(k, y.conj()), P) / L
 
             a = c[:int(K*N)]
@@ -344,49 +243,79 @@ def dfe_matlab(v_rls, d, Ns, Nd, feedforward_taps=20, feedbackward_taps=8, alpha
             d_tilde = d_tilde_buf[:M]
 
         mse = 10 * np.log10(
-            np.mean(np.abs(d[Nt : -1] - d_hat[Nt : -1]) ** 2)
+            np.mean(np.abs(d[Nt : -1 ] - d_hat[Nt : -1]) ** 2)
         )
+        if np.isnan(mse):
+            mse = 100
         return d_hat, mse, #n_err, n_training
 
 if __name__ == "__main__":
-    # initialize
-    bits = 7
-    rep = 16
-    training_rep = 4
-    snr_db = np.array([8, 12, 16, 20]) #np.arange(-10,20,2)
-    n_ff = 20
-    n_fb = 4
-    R = 3000
-    fs = 48000
-    ns = int(fs/R)
-    ns_fs = 4 # fractionally spaced
-    fc = 16e3
-    uf = int(fs / R)
-    df = int(uf / ns)
+    Nd = 3000
+    Nz = 100
+    # init bits (training bits are a select repition of bits)
+    
+    dp = np.array([1, -1, 1, -1, 1, 1, -1, -1, 1, 1, 1, 1, 1])*(1+1j)/np.sqrt(2)
+    fc = 17e3
+    Fs = 44100
+    fs = Fs/4
+    Ts = 1/fs
+    alpha = 0.25
+    trunc = 4
+    Ns = 7
+    T = Ns*Ts
+    R = 1/T
+    B = R*(1+alpha)
+    Nso = Ns
+
     n_rx = 12
     d_lambda = 0.5 #np.array([0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]) #
     el_spacing = d_lambda*343/fc
-    mse = np.zeros(len(snr_db),dtype='float')
-    mse_dl = np.zeros(len(snr_db),dtype='float')
-    # init rrc filters with b=0.5
-    _, rc_tx = rrcosfilter(16 * int(1 / R * fs), 0.5, 1 / R, fs)
-    _, rc_rx = rrcosfilter(16 * int(fs / R), 0.5, 1 / R, fs)
-    # generate the tx BPSK signal
-    # init bits (training bits are a select repition of bits)
-    d = np.array(sg.max_len_seq(bits)[0]) * 2 - 1.0
-    u = np.tile(d,rep)
-    # upsample
-    u = sg.resample_poly(u,uf,1)
-    #u = upsample(u, uf)
-    # filter
-    u_rrc = u #np.convolve(u, rc_tx, "full")
+
+    g=rcos(alpha,Ns,trunc)
+    up = fil(dp,g,Ns)
+    lenu = len(up)
+
+    d=np.sign(np.random.randn(Nd))+1j*np.sign(np.random.randn(Nd))
+    d /= np.sqrt(2)
+    ud = fil(d,g,Ns)
+    u=np.concatenate((up, np.zeros(Nz*Ns), ud))
+    us = sg.resample_poly(u,Fs,fs)
     # upshift
-    s = np.real(u_rrc * np.exp(2j * np.pi * fc * np.arange(len(u_rrc)) / fs))
+    s = np.real(us * np.exp(2j * np.pi * fc * np.arange(len(us)) / Fs))
     s /= np.max(np.abs(s))
+
+    snr_db = np.array([300,300,300,300])
+    mse = np.zeros_like(snr_db)
+    mse_dl = np.zeros_like(snr_db)
+
+    K0 = 10
+    Ns = 7
+    Nplus = 4
     # generate rx signal with ISI
     for ind in range(len(snr_db)):
-        d0 = el_spacing
         snr = 10**(0.1 * snr_db[ind])
+        d0 = el_spacing
+        """
+        for k in range(K0):
+            Tmp = 0
+            v = np.zeros(len(u),dtype=complex)
+            vp = u
+            vp[-1] = 0
+            v = v+vp # right now v is huge
+            
+            v /= np.sqrt(pwr(v))
+            v0 = v
+            v = v0
+            z = np.sqrt(1/(2*snr))*np.random.randn(np.size(v)) + 1j*np.sqrt(1/(2*snr))*np.random.randn(np.size(v))
+            v = v + z - z
+            v = v[lenu+Nz*Ns+trunc*Ns+1:]
+
+            v = sg.resample_poly(v,2,Ns)
+            v = np.concatenate((v,np.zeros(Nplus*2)))
+            if k==0:
+                vk = np.zeros((K0,len(v)),dtype=complex)
+            vk[k,:] = v
+        """
         r_multi, wk = transmit(s,snr,n_rx,d0,R,fc,fs) # should come out as an n-by-zero
         peaks_rx = 0
         v_multichannel = []
@@ -426,64 +355,21 @@ if __name__ == "__main__":
             v_multichannel = v_multichannel[None,:]
         # resample v_multichannel for frac spac
         v_multichannel = sg.resample_poly(v_multichannel,ns_fs,ns,axis=1)
-        #v_multichannel = v_multichannel[:,:int(len(v_multichannel)/2)]
-        d_hat, mse_out = dfe_matlab(v_multichannel, d_adj, ns_fs, len(d_adj), n_ff, n_fb)
-        d_hat_adj = (d_hat > 0) * 2 - 1
-        #d_hat = lms(v,d,ns)
-        mse[ind] = 10 * np.log10(
-            np.mean(np.abs(d_adj[300 :] - d_hat[300 :]) ** 2)
-        )
-        
+        d_hat, mse_out = dfe_matlab(vk, d, Ns, Nd)
+
+        mse[ind] = mse_out
+
         # plot const
         plt.subplot(2, 2, int(ind+1))
-        plt.scatter(np.real(d_hat), np.imag(d_hat), marker='*')
+        plt.scatter(np.real(d_hat), np.imag(d_hat), marker='x')
         plt.axis('square')
         plt.axis([-2, 2, -2, 2])
         plt.title(f'SNR={snr_db[ind]} dB') #(f'd0={d_lambda[ind]}'r'$\lambda$')
-
-        # Apply wk and use for downlink
-        """
-        s_dl = np.dot(np.reshape(wk,[-1,1]),np.reshape(s,[1,-1]))
-        r_single = transmit_dl(s_dl,snr,n_rx,d0,R,fc,fs)
-        peaks_dl = 0
-        v_dl = r_single * np.exp(-2 * np.pi * 1j * fc * np.arange(len(r_single))/fs)
-        xcorr_dl = np.abs(sg.fftconvolve(v_dl, sg.resample_poly(d[::-1].conj(),uf,1))) # correalte and sync at sample rate sg.decimate(v, int(ns)),
-        xcorr_dl /= xcorr_dl.max()
-        time_axis_xcorr = np.arange(0, len(xcorr_dl)) / R * 1e3  # ms
-        peaks_dl, _ = sg.find_peaks(
-            xcorr_dl, height=0.2, distance=len(d) - 100
-        )
-        v_dl = v_dl[int(peaks_dl[1]) :] # * ns
-        d_adj = np.tile(d,rep)
-        v_dl = v_dl[None,:]
-        # resample v_multichannel for frac spac
-        v_dl = sg.resample_poly(v_dl,ns_fs,ns,axis=1)
-        d_hat_dl, mse_out_dl = dfe_old(v_dl, d_adj, ns_fs, n_ff, n_fb)
-        mse_dl[ind] = mse_out_dl
-        plt.subplot(2, 2, int(ind+1))
-        plt.scatter(np.real(d_hat_dl), np.imag(d_hat_dl), marker='*')
-        plt.axis('square')
-        plt.axis([-2, 2, -2, 2])
-        plt.title(f'SNR={snr_db[ind]} dB')
-        plt.suptitle('Uplink and Downlink BPSK Constellation Diagrams')
-        plt.legend(['Uplink','Downlink'])
-        """
 
     fig, ax = plt.subplots()
     ax.plot(snr_db,mse,'o')
     ax.set_xlabel(r'SNR (dB)')
     ax.set_ylabel('MSE (dB)')
-    # ax.set_xticks(np.arange(el_spacing[0],el_spacing[-1]))
     ax.set_title('MSE vs SNR for BPSK Signal')
     plt.show()
-
-    """
-    fig, ax = plt.subplots()
-    ax.plot(snr_db,mse_dl,'o')
-    ax.set_xlabel(r'SNR (dB)')
-    ax.set_ylabel('MSE (dB)')
-    # ax.set_xticks(np.arange(el_spacing[0],el_spacing[-1]))
-    ax.set_title('MSE vs SNR for BPSK Signal Downlink')
-    plt.show()
-
-    """
+    print(mse)
