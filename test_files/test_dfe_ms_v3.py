@@ -88,10 +88,10 @@ def dfe_matlab(vk, d, Ns, Nd): #, filename='data/r_multichannel.npy'
         et = np.zeros(Nd, dtype=complex)
         d_hat = np.zeros_like(d, dtype=complex)
 
-        for n in range(1,Nd-1):
-            nb = (n-1) * Ns + (Nplus - 1) * Ns
+        for n in range(Nd-1):
+            nb = (n) * Ns + (Nplus - 1) * Ns
             xn = v[
-                :, int(nb + np.ceil(Ns / FS / 2)) : int(nb + Ns + 1)
+                :, int(nb + np.ceil(Ns / FS / 2)-1) : int(nb + Ns)
                 : int(Ns / FS)
             ]
             for k in range(K):
@@ -100,8 +100,8 @@ def dfe_matlab(vk, d, Ns, Nd): #, filename='data/r_multichannel.npy'
             x = np.concatenate((xn, x), axis=1)
             x = x[:,:N] # in matlab, this appends zeros
 
-            for k in range(1,K):
-                p[k] = np.inner(x[k,:], a[(k-1)*N:k*N].conj())
+            for k in range(K):
+                p[k] = np.inner(x[k,:], np.conj(a[(k*N):(k+1)*N]))
             psum = p.sum()
 
             q = np.inner(d_tilde, b.conj())
@@ -119,16 +119,16 @@ def dfe_matlab(vk, d, Ns, Nd): #, filename='data/r_multichannel.npy'
             Sf = Sf + phi
             f[n+1,:] = f[n,:] + Kf1*phi + Kf2*Sf
 
-            y = np.reshape(x.T,(1,int(K*N)))
+            y = np.reshape(x,(1,int(K*N)))
             y = np.append(y,d_tilde)
 
             # RLS
             k = (
-                np.matmul(P, y.T)
+                np.matmul(P, y)
                 / L
-                / (1 + np.matmul(np.matmul(y.conj(), P), y.T) / L)
+                / (1 + np.matmul(np.matmul(y.conj(), P), y) / L)
             )
-            c += k.T * e.conj()
+            c += k * e.conj()
             P = P / L - np.matmul(np.outer(k, y.conj()), P) / L
 
             a = c[:int(K*N)]
@@ -138,7 +138,7 @@ def dfe_matlab(vk, d, Ns, Nd): #, filename='data/r_multichannel.npy'
             d_tilde = d_tilde_buf[:M]
 
         mse = 10 * np.log10(
-            np.mean(np.abs(d[Nt : -1] - d_hat[Nt : -1]) ** 2)
+            np.mean(np.abs(d[Nt : 2600 ] - d_hat[Nt : 2600]) ** 2)
         )
         if np.isnan(mse):
             mse = 100
@@ -207,12 +207,12 @@ if __name__ == "__main__":
         #np.save('data/vk_imag.npy',np.imag(vk))
         #np.save('data/d_real.npy',np.real(d))
         #np.save('data/d_imag.npy',np.imag(d))
-        vk_real = np.load('data/vk_real.npy')
-        vk_imag = np.load('data/vk_imag.npy')
-        vk = vk_real + 1j*vk_imag
-        d_real = np.load('data/d_real.npy')
-        d_imag = np.load('data/d_imag.npy')
-        d = d_real + 1j*d_imag
+        #vk_real = np.load('data/vk_real.npy')
+        #vk_imag = np.load('data/vk_imag.npy')
+        #vk = vk_real + 1j*vk_imag
+        #d_real = np.load('data/d_real.npy')
+        #d_imag = np.load('data/d_imag.npy')
+        #d = d_real + 1j*d_imag
 
         d_hat, mse_out = dfe_matlab(vk, d, Ns, Nd)
         #mse[ind] = 10 * np.log10(
@@ -222,7 +222,7 @@ if __name__ == "__main__":
 
         # plot const
         plt.subplot(2, 2, int(ind+1))
-        plt.scatter(np.real(d_hat), np.imag(d_hat), marker='*')
+        plt.scatter(np.real(d_hat[:2600]), np.imag(d_hat[:2600]), marker='*')
         plt.axis('square')
         plt.axis([-2, 2, -2, 2])
         plt.title(f'SNR={snr_db[ind]} dB') #(f'd0={d_lambda[ind]}'r'$\lambda$')
