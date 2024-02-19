@@ -138,7 +138,7 @@ def dfe_matlab(vk, d, Ns, Nd): #, filename='data/r_multichannel.npy'
             d_tilde = d_tilde_buf[:M]
 
         mse = 10 * np.log10(
-            np.mean(np.abs(d[Nt : 2600 ] - d_hat[Nt : 2600]) ** 2)
+            np.mean(np.abs(d[Nt : -1 ] - d_hat[Nt : -1]) ** 2)
         )
         if np.isnan(mse):
             mse = 100
@@ -222,7 +222,7 @@ if __name__ == "__main__":
 
         # plot const
         plt.subplot(2, 2, int(ind+1))
-        plt.scatter(np.real(d_hat[:2600]), np.imag(d_hat[:2600]), marker='*')
+        plt.scatter(np.real(d_hat), np.imag(d_hat), marker='x')
         plt.axis('square')
         plt.axis([-2, 2, -2, 2])
         plt.title(f'SNR={snr_db[ind]} dB') #(f'd0={d_lambda[ind]}'r'$\lambda$')
