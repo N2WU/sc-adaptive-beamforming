@@ -3,11 +3,11 @@ import scipy.signal as sg
 import matplotlib.pyplot as plt
 
 def rcos(alpha, Ns, trunc):
-    tn = np.arange(-trunc * Ns, trunc * Ns) / Ns
-    p = np.sinc(tn) * np.cos(np.pi * alpha * tn) / (1 - 4 * alpha**2 * tn**2)
+    tn = np.arange(-trunc * Ns, trunc * Ns+1) / Ns
+    p = np.sin(np.pi* tn)/(np.pi*tn) * np.cos(np.pi * alpha * tn) / (1 - 4 * (alpha**2) * (tn**2))
     p[np.isnan(p)] = 0  # Replace NaN with 0
     p[np.isinf(p)] = 0
-    p[Ns * trunc] = 1
+    p[-1] = 1
     return p
 
 def fdel(v, u):
@@ -40,7 +40,7 @@ def fil(d, p, Ns):
     Lp = len(p)
     Ld = Ns * N
     u = np.zeros(Lp + Ld - Ns,dtype=complex)
-    for n in range(len(d)):
+    for n in range(N-1):
         window = np.arange(int(n*Ns), int(n*Ns + Lp))
         u[window] =  u[window] + d[n] * p
     return u
@@ -91,7 +91,7 @@ def dfe_matlab(vk, d, Ns, Nd): #, filename='data/r_multichannel.npy'
         for n in range(1,Nd-1):
             nb = (n-1) * Ns + (Nplus - 1) * Ns
             xn = v[
-                :, int(nb + np.ceil(Ns / FS / 2)) : int(nb + Ns)
+                :, int(nb + np.ceil(Ns / FS / 2)) : int(nb + Ns + 1)
                 : int(Ns / FS)
             ]
             for k in range(K):
@@ -173,7 +173,7 @@ if __name__ == "__main__":
     us = sg.resample_poly(u,Fs,fs)
     # upshift
     s = np.real(us * np.exp(2j * np.pi * fc * np.arange(len(us)) / Fs))
-    s /= np.max(np.abs(s))
+    #s /= np.max(np.abs(s))
 
     snr_db = np.array([300,300,300,300])
     mse = np.zeros_like(snr_db)
@@ -195,17 +195,25 @@ if __name__ == "__main__":
             v0 = v
             v = v0
             z = np.sqrt(1/(2*snr))*np.random.randn(np.size(v)) + 1j*np.sqrt(1/(2*snr))*np.random.randn(np.size(v))
-            v = v + z
-            v = v[lenu+Nz*Ns+4*Ns+1:]
+            v = v + z - z
+            v = v[lenu+Nz*Ns+trunc*Ns+1:]
 
             v = sg.resample_poly(v,2,Ns)
             v = np.concatenate((v,np.zeros(Nplus*2)))
             if k==0:
                 vk = np.zeros((K0,len(v)),dtype=complex)
             vk[k,:] = v
-        np.save('vk_real.npy',np.real(vk))
-        np.save('vk_imag.npy',np.imag(vk))
-        # vk = np.load('test_files/vk1.npy')
+        #np.save('data/vk_real.npy',np.real(vk))
+        #np.save('data/vk_imag.npy',np.imag(vk))
+        #np.save('data/d_real.npy',np.real(d))
+        #np.save('data/d_imag.npy',np.imag(d))
+        vk_real = np.load('data/vk_real.npy')
+        vk_imag = np.load('data/vk_imag.npy')
+        vk = vk_real + 1j*vk_imag
+        d_real = np.load('data/d_real.npy')
+        d_imag = np.load('data/d_imag.npy')
+        d = d_real + 1j*d_imag
+
         d_hat, mse_out = dfe_matlab(vk, d, Ns, Nd)
         #mse[ind] = 10 * np.log10(
         #    np.mean(np.abs(d[300 :] - d_hat[300 :]) ** 2)

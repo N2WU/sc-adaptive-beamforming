@@ -6,13 +6,11 @@ passband=1;
 Nd=3000;
 Nz=100;
 
-
 dp=[1 -1 1 -1 1 1 -1 -1 1 1 1 1 1]*(1+1i)/sqrt(2);
 fc=17000;
 Fs=44100; fs=Fs/4; Ts=1/fs;
 alpha=0.25;trunc=4;
-Ns=7; T=Ns*Ts; R=1/T; B=R*(1+alpha);
-Nso=Ns;
+Ns=7; T=Ns*Ts; R=1/T;
 
 g=rcos(alpha,Ns,trunc);
 up=fil(dp,g,Ns);
@@ -22,13 +20,13 @@ d=sign(randn(1,Nd))+1i*sign(randn(1,Nd));d=d/sqrt(2);
 ud=fil(d,g,Ns);
 u=[up zeros(1,Nz*Ns) ud];
 us=resample(u,Fs,fs);
-s=real(us.*exp(1i*2*pi*fc*(0:length(us)-1)/Fs));
+%s=real(us.*exp(1i*2*pi*fc*(0:length(us)-1)/Fs));
 
 K0 = 10;
 Ns = 7;
 Nplus = 4;
 vk = [];
-%{
+
 for k = 1:K0    % repeat v 10 K0 times, add noise to each signal
     Tmp=0;
     
@@ -44,7 +42,7 @@ for k = 1:K0    % repeat v 10 K0 times, add noise to each signal
     v0 = v;
     v = v0;
     z=sqrt(1/(2*SNR))*randn(size(v))+1i*sqrt(1/(2*SNR))*randn(size(v));
-    z = ones(size(v)) + 1i*ones(size(v));
+    %z = ones(size(v)) + 1i*ones(size(v));
     % hmmm
     v=v+z-z;
     
@@ -56,11 +54,19 @@ for k = 1:K0    % repeat v 10 K0 times, add noise to each signal
     v = [v zeros(1,Nplus*2)];
     vk(k,:) = v;
 end
-%} 
+
 %%
-vk_real = readNPY('vk_real.npy');
-vk_imag = readNPY('vk_imag.npy');
-vk = vk_real + 1j*vk_imag;
+%vk_real = readNPY('C:\Users\Nolan\Documents\GitHub\sc-adaptive-beamforming\data\vk_real.npy');
+%vk_imag = readNPY('C:\Users\Nolan\Documents\GitHub\sc-adaptive-beamforming\data\vk_imag.npy');
+%vk = vk_real + 1j*vk_imag;
+%writeNPY(real(vk),'C:\Users\Nolan\Documents\GitHub\sc-adaptive-beamforming\data\vk_real.npy')
+%writeNPY(imag(vk),'C:\Users\Nolan\Documents\GitHub\sc-adaptive-beamforming\data\vk_imag.npy')
+
+%d_real = readNPY('C:\Users\Nolan\Documents\GitHub\sc-adaptive-beamforming\data\d_real.npy');
+%d_imag = readNPY('C:\Users\Nolan\Documents\GitHub\sc-adaptive-beamforming\data\d_imag.npy');
+%d = d_real + 1j*d_imag;
+%writeNPY(real(d),'C:\Users\Nolan\Documents\GitHub\sc-adaptive-beamforming\data\d.npy')
+%writeNPY(imag(d),'C:\Users\Nolan\Documents\GitHub\sc-adaptive-beamforming\data\d.npy')
 
 figure
 K = length(vk(:,1));
