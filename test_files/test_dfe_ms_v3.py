@@ -2,6 +2,9 @@ import numpy as np
 import scipy.signal as sg
 import matplotlib.pyplot as plt
 
+# 2024-02-19: working commit
+# this code simulates no-noise environment at high SNR
+
 def rcos(alpha, Ns, trunc):
     tn = np.arange(-trunc * Ns, trunc * Ns+1) / Ns
     p = np.sin(np.pi* tn)/(np.pi*tn) * np.cos(np.pi * alpha * tn) / (1 - 4 * (alpha**2) * (tn**2))
