@@ -163,11 +163,11 @@ def dec4psk(x):
     d = d/np.sqrt(2)
     return d
 
-def dfe_matlab(vk, d, Ns, Nd): 
+def dfe_matlab(vk, d, Ns, Nd, M): 
         K = len(vk[:,0]) # maximum
         Ns = 2
         N = int(6 * Ns)
-        M = int(0)
+        # M = int(0)
         delta = 10**(-3)
         Nt = 4*(N+M)
         FS = 2
@@ -337,6 +337,9 @@ if __name__ == "__main__":
                     #plt.plot(np.abs(xcorr_for_peaks))
                     #plt.show()
                 v = v[int(peaks_rx[1]) :] # * ns
+                fde=fdop(v[:len(up)],up,fs,12) # filter but also delay
+                # v=v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts) # odd way to pulse shape
+                # v=sg.resample_poly(v,1,int(1/(1+fde/fc))) # random resample op
                 v = v[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
                 v = sg.resample_poly(v,2,Ns)
                 v = np.concatenate((v,np.zeros(Nplus*2))) # should occur after 
@@ -350,7 +353,9 @@ if __name__ == "__main__":
                 v_multichannel = v_multichannel[None,:]
             # resample v_multichannel for frac spac
             # v_multichannel = sg.resample_poly(v_multichannel,2,Ns,axis=1)
-            d_hat, mse_out = dfe_matlab(v_multichannel, d, Ns, Nd)
+            Tmp=40/1000 # is this a constant or can it be adjusted?
+            M = int(np.ceil(Tmp/T))
+            d_hat, mse_out = dfe_matlab(v_multichannel, d, Ns, Nd, M)
 
             mse[ind] = mse_out
 

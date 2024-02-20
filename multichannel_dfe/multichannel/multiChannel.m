@@ -28,7 +28,7 @@ Nplus = 4;
 vk = [];
 
 for k = 1:K0    % repeat v 10 K0 times, add noise to each signal
-    Tmp=0;
+    Tmp=40/1000;
     
     snr=300; SNR=10^(snr/10);
 
@@ -65,15 +65,15 @@ for k = 1:K0    % repeat v 10 K0 times, add noise to each signal
 end
 
 %%
-vk_real = readNPY('D:\pearc\Documents\GitHub\sc-adaptive-beamforming\data\vk_real.npy');
-vk_imag = readNPY('D:\pearc\Documents\GitHub\sc-adaptive-beamforming\data\vk_imag.npy');
-vk = vk_real + 1j*vk_imag;
+%vk_real = readNPY('D:\pearc\Documents\GitHub\sc-adaptive-beamforming\data\vk_real.npy');
+%vk_imag = readNPY('D:\pearc\Documents\GitHub\sc-adaptive-beamforming\data\vk_imag.npy');
+%vk = vk_real + 1j*vk_imag;
 %writeNPY(real(vk),'C:\Users\Nolan\Documents\GitHub\sc-adaptive-beamforming\data\vk_real.npy')
 %writeNPY(imag(vk),'C:\Users\Nolan\Documents\GitHub\sc-adaptive-beamforming\data\vk_imag.npy')
 
-d_real = readNPY('D:\pearc\Documents\GitHub\sc-adaptive-beamforming\data\d_real.npy');
-d_imag = readNPY('D:\pearc\Documents\GitHub\sc-adaptive-beamforming\data\d_imag.npy');
-d = d_real + 1j*d_imag;
+%d_real = readNPY('D:\pearc\Documents\GitHub\sc-adaptive-beamforming\data\d_real.npy');
+%d_imag = readNPY('D:\pearc\Documents\GitHub\sc-adaptive-beamforming\data\d_imag.npy');
+%d = d_real + 1j*d_imag;
 %writeNPY(real(d),'C:\Users\Nolan\Documents\GitHub\sc-adaptive-beamforming\data\d.npy')
 %writeNPY(imag(d),'C:\Users\Nolan\Documents\GitHub\sc-adaptive-beamforming\data\d.npy')
 
