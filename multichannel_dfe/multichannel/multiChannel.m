@@ -42,16 +42,25 @@ for k = 1:K0    % repeat v 10 K0 times, add noise to each signal
     v0 = v;
     v = v0;
     z=sqrt(1/(2*SNR))*randn(size(v))+1i*sqrt(1/(2*SNR))*randn(size(v));
-    %z = ones(size(v)) + 1i*ones(size(v));
-    % hmmm
-    v=v+z-z;
-    
-    lenv=length(v);
 
-    v=v(lenu+Nz*Ns+trunc*Ns+1+1:end);
+    v=v+z;
+    lenv=length(v);
+    vin=v;
+    vp=v(1:length(up)+Nz*Ns); % channel-simualted preamble
     
-    v = resample(v,2,Ns);
-    v = [v zeros(1,Nplus*2)];
+    [del,~]=fdel(vp,up); % find delay
+    tau0e=round(del*Ts*1000); % adjust delay to samples
+    vp1=vp(del:del+lenu-1); % adjust signal based on sample delay
+    
+    fde=fdop(vp1,up,fs,12); % filter but also delay
+    fde1=fde;
+    v=v.*exp(-1i*2*pi*[0:lenv-1]*fde*Ts); % odd way to pulse shape
+    v=resample(v,10^4,round(1/(1+fde/fc)*10^4)); %random resample op
+    
+    v=v(del:del+length(u)-1); % same sample adjustment
+    v=v(lenu+Nz*Ns+trunc*Ns+1+1:end); % cut for just data packet
+    v = resample(v,2,Ns); % fractional resamptional
+    v = [v zeros(1,Nplus*2)]; % zeros for funsies
     vk(k,:) = v;
 end
 
