@@ -3,7 +3,8 @@ import scipy.signal as sg
 import matplotlib.pyplot as plt
 
 # 2024-02-19: init commit
-# this code simulates two-path refelct environment from uplink to downlink
+# 2024-02-22: final commit
+# this code uses a defined path delay for a single-receiver uplink
 
 def rcos(alpha, Ns, trunc):
     tn = np.arange(-trunc * Ns, trunc * Ns+1) / Ns

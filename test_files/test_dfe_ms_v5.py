@@ -2,7 +2,7 @@ import numpy as np
 import scipy.signal as sg
 import matplotlib.pyplot as plt
 
-# 2024-02-19: init commit
+# 2024-02-22: init commit
 # this code simulates two-path refelct environment from uplink to downlink
 
 def rcos(alpha, Ns, trunc):
@@ -130,6 +130,23 @@ def transmit(s,snr,n_rx,el_spacing,R,fc,fs):
     # processing the signal we get from bf
     r_multichannel_1 = y
     return r_multichannel, wk
+
+def transmit_simple(s,snr,n_rx):
+    a = 1/350
+    r = sg.resample_poly(s,int(10**4),int((1+a)*10**4))
+    rng = np.random.RandomState(2021)
+    r_multi = rng.randn(n_rx,len(r)) / snr
+    r_multi += np.tile(r,(n_rx,1))
+    return r_multi.T
+
+def transmit_passband(v,Fs,fs,fc):
+    vs = sg.resample_poly(v,Fs,fs)
+    s = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
+    a = 1/350
+    r = sg.resample_poly(s,int(10**4),int((1+a)*10**4))
+    vr = 2*r*np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
+    v = sg.resample_poly(vr,1,Fs/fs)
+    return v
 
 def transmit_dl(s_dl,snr,n_rx,el_spacing,R,fc,fs):
     reflection_list = np.asarray([1,0.5]) # reflection gains
@@ -285,7 +302,7 @@ if __name__ == "__main__":
     s = np.real(us * np.exp(2j * np.pi * fc * np.arange(len(us)) / Fs))
     s /= np.max(np.abs(s))
 
-    snr_db = np.array([10, 15, 20, 25])
+    snr_db = np.array([30, 31, 32, 33])
     mse = np.zeros_like(snr_db)
     mse_dl = np.zeros_like(snr_db)
 
@@ -299,12 +316,13 @@ if __name__ == "__main__":
         d0 = el_spacing
 
         r_multi, wk = transmit(s,snr,n_rx,d0,R,fc,Fs) # should come out as an n-by-zero
+        r_multi = transmit_simple(s,snr,n_rx)
         peaks_rx = 0
         v_multichannel = []
         for i in range(len(r_multi[0,:])):
             r = np.squeeze(r_multi[:, i])
-            v = r * np.exp(-2 * np.pi * 1j * fc * np.arange(len(r))/Fs)
-            v_xcorr = np.copy(v)
+            vr = r * np.exp(-2 * np.pi * 1j * fc * np.arange(len(r))/Fs)
+            v_xcorr = np.copy(vr)
             #v = np.convolve(v, rc_rx, "full")
             if i == 0:
                 xcorr_for_peaks = np.abs(sg.fftconvolve(v_xcorr, sg.resample_poly(d[::-1].conj(),uf,1))) # correalte and sync at sample rate sg.decimate(v, int(ns)),
@@ -316,21 +334,12 @@ if __name__ == "__main__":
                 #plt.figure()
                 #plt.plot(np.abs(xcorr_for_peaks))
                 #plt.show()
-            v = v[int(peaks_rx[1]) :] # * ns
-            
-            # copy from matlab code
-            """
+            vr = vr[int(peaks_rx[1]) :] # * ns
+            v = sg.resample_poly(vr,1,Fs/fs)
             v = np.copy(u)
-            vp = np.copy(u)
             v /= np.sqrt(pwr(v))
-            z = np.sqrt(1/(2*snr))*np.random.randn(np.size(v)) + 1j*np.sqrt(1/(2*snr))*np.random.randn(np.size(v))
-            v = v + z
-            vp = v[:len(up)+Nz*Ns]
-            delval, _  = fdel(vp,up)
-
-            v = v[delval:delval+len(u)] # v(del:del+length(u)-1)
-            """
-            # v = v[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
+            v = transmit_passband(v,Fs,fs,fc)
+            v = v[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
             v = sg.resample_poly(v,2,Ns)
             v = np.concatenate((v,np.zeros(Nplus*2))) # should occur after 
             if i == 0:
