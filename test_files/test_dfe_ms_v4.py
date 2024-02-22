@@ -392,6 +392,6 @@ if __name__ == "__main__":
     ax.plot(snr_db,mse,'o')
     ax.set_xlabel(r'SNR (dB)')
     ax.set_ylabel('MSE (dB)')
-    ax.set_title('MSE vs SNR for BPSK Signal')
+    ax.set_title('MSE vs SNR for QPSK Signal')
     plt.show()
     print(mse)
