@@ -224,7 +224,7 @@ def dfe_matlab(vk, d, Ns, Nd, M):
             Sf = Sf + phi
             f[n+1,:] = f[n,:] + Kf1*phi + Kf2*Sf
 
-            y = np.reshape(x,(1,int(K*N)))
+            y = np.reshape(x,int(K*N))
             y = np.append(y,d_tilde)
 
             # RLS
@@ -272,20 +272,20 @@ if __name__ == "__main__":
     d_lambda = 0.5 #np.array([0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]) #
     el_spacing = d_lambda*343/fc
 
-    g=rcos(alpha,Ns,trunc)
+    g = rcos(alpha,Ns,trunc)
     up = fil(dp,g,Ns)
     lenu = len(up)
 
-    d=np.sign(np.random.randn(Nd))+1j*np.sign(np.random.randn(Nd))
+    d = np.sign(np.random.randn(Nd))+1j*np.sign(np.random.randn(Nd))
     d /= np.sqrt(2)
     ud = fil(d,g,Ns)
-    u=np.concatenate((up, np.zeros(Nz*Ns), ud))
+    u = np.concatenate((up, np.zeros(Nz*Ns), ud))
     us = sg.resample_poly(u,Fs,fs)
     # upshift
     s = np.real(us * np.exp(2j * np.pi * fc * np.arange(len(us)) / Fs))
     s /= np.max(np.abs(s))
 
-    snr_db = np.array([300,300,300,300])
+    snr_db = np.array([10, 15, 20, 25])
     mse = np.zeros_like(snr_db)
     mse_dl = np.zeros_like(snr_db)
 
@@ -294,70 +294,92 @@ if __name__ == "__main__":
     Nplus = 4
     # generate rx signal with ISI
     for ind in range(len(snr_db)):
-        for repeat in range(4):
-            snr = 10**(0.1 * snr_db[ind])
-            d0 = el_spacing
-            """
-            for k in range(K0):
-                Tmp = 0
-                v = np.zeros(len(u),dtype=complex)
-                vp = u
-                vp[-1] = 0
-                v = v+vp # right now v is huge
-                
-                v /= np.sqrt(pwr(v))
-                v0 = v
-                v = v0
-                z = np.sqrt(1/(2*snr))*np.random.randn(np.size(v)) + 1j*np.sqrt(1/(2*snr))*np.random.randn(np.size(v))
-                v = v + z - z
-                v = v[lenu+Nz*Ns+trunc*Ns+1:]
+        #for repeat in range(4):
+        snr = 10**(0.1 * snr_db[ind])
+        d0 = el_spacing
+        """
+        for k in range(K0):
+            Tmp = 0
+            v = np.zeros(len(u),dtype=complex)
+            vp = u
+            vp[-1] = 0
+            v = v+vp # right now v is huge
+            
+            v /= np.sqrt(pwr(v))
+            v0 = v
+            v = v0
+            z = np.sqrt(1/(2*snr))*np.random.randn(np.size(v)) + 1j*np.sqrt(1/(2*snr))*np.random.randn(np.size(v))
+            v = v + z - z
+            v = v[lenu+Nz*Ns+trunc*Ns+1:]
 
-                v = sg.resample_poly(v,2,Ns)
-                v = np.concatenate((v,np.zeros(Nplus*2)))
-                if k==0:
-                    vk = np.zeros((K0,len(v)),dtype=complex)
-                vk[k,:] = v
-            """
-            r_multi, wk = transmit(s,snr,n_rx,d0,R,fc,Fs) # should come out as an n-by-zero
-            peaks_rx = 0
-            v_multichannel = []
-            for i in range(len(r_multi[0,:])):
-                r = np.squeeze(r_multi[:, i])
-                v = r * np.exp(-2 * np.pi * 1j * fc * np.arange(len(r))/Fs)
-                v_xcorr = np.copy(v)
-                #v = np.convolve(v, rc_rx, "full")
-                if i == 0:
-                    xcorr_for_peaks = np.abs(sg.fftconvolve(v_xcorr, sg.resample_poly(d[::-1].conj(),uf,1))) # correalte and sync at sample rate sg.decimate(v, int(ns)),
-                    xcorr_for_peaks /= xcorr_for_peaks.max()
-                    time_axis_xcorr = np.arange(0, len(xcorr_for_peaks)) / R * 1e3  # ms
-                    peaks_rx, _ = sg.find_peaks(
-                        xcorr_for_peaks, height=0.2, distance=len(d) - 100
-                    )
-                    #plt.figure()
-                    #plt.plot(np.abs(xcorr_for_peaks))
-                    #plt.show()
-                v = v[int(peaks_rx[1]) :] # * ns
-                fde=fdop(v[:len(up)],up,fs,12) # filter but also delay
-                # v=v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts) # odd way to pulse shape
-                # v=sg.resample_poly(v,1,int(1/(1+fde/fc))) # random resample op
-                v = v[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
-                v = sg.resample_poly(v,2,Ns)
-                v = np.concatenate((v,np.zeros(Nplus*2))) # should occur after 
-                if i == 0:
-                    v_multichannel = v
-                else:
-                    v_multichannel = np.vstack((v_multichannel,v))
-            # dfe
-            # d_adj = np.tile(d,rep)
-            if n_rx == 1:
-                v_multichannel = v_multichannel[None,:]
-            # resample v_multichannel for frac spac
-            # v_multichannel = sg.resample_poly(v_multichannel,2,Ns,axis=1)
-            Tmp=40/1000 # is this a constant or can it be adjusted?
-            M = int(np.ceil(Tmp/T))
-            d_hat, mse_out = dfe_matlab(v_multichannel, d, Ns, Nd, M)
+            v = sg.resample_poly(v,2,Ns)
+            v = np.concatenate((v,np.zeros(Nplus*2)))
+            if k==0:
+                vk = np.zeros((K0,len(v)),dtype=complex)
+            vk[k,:] = v
+        """
+        r_multi, wk = transmit(s,snr,n_rx,d0,R,fc,Fs) # should come out as an n-by-zero
+        peaks_rx = 0
+        v_multichannel = []
+        for i in range(len(r_multi[0,:])):
+            r = np.squeeze(r_multi[:, i])
+            v = r * np.exp(-2 * np.pi * 1j * fc * np.arange(len(r))/Fs)
+            v_xcorr = np.copy(v)
+            #v = np.convolve(v, rc_rx, "full")
+            if i == 0:
+                xcorr_for_peaks = np.abs(sg.fftconvolve(v_xcorr, sg.resample_poly(d[::-1].conj(),uf,1))) # correalte and sync at sample rate sg.decimate(v, int(ns)),
+                xcorr_for_peaks /= xcorr_for_peaks.max()
+                time_axis_xcorr = np.arange(0, len(xcorr_for_peaks)) / R * 1e3  # ms
+                peaks_rx, _ = sg.find_peaks(
+                    xcorr_for_peaks, height=0.2, distance=len(d) - 100
+                )
+                #plt.figure()
+                #plt.plot(np.abs(xcorr_for_peaks))
+                #plt.show()
+            v = v[int(peaks_rx[1]) :] # * ns
+            
+            # copy from matlab code
+            v = np.copy(u)
+            vp = np.copy(u)
+            v /= np.sqrt(pwr(v))
+            z = np.sqrt(1/(2*snr))*np.random.randn(np.size(v)) + 1j*np.sqrt(1/(2*snr))*np.random.randn(np.size(v))
+            v = v + z
+            vp = v[:len(up)+Nz*Ns]
+            delval, _  = fdel(vp,up)
 
-            mse[ind] = mse_out
+            v = v[delval:delval+len(u)] # v(del:del+length(u)-1)
+            v = v[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
+            v = sg.resample_poly(v,2,Ns)
+            v = np.concatenate((v,np.zeros(Nplus*2))) # should occur after 
+            if i == 0:
+                v_multichannel = v
+            else:
+                v_multichannel = np.vstack((v_multichannel,v))
+        # dfe
+        # d_adj = np.tile(d,rep)
+        if n_rx == 1:
+            v_multichannel = v_multichannel[None,:]
+        # resample v_multichannel for frac spac
+        # v_multichannel = sg.resample_poly(v_multichannel,2,Ns,axis=1)
+        #vk_real = np.load('data/vk_real.npy')
+        #vk_imag = np.load('data/vk_imag.npy')
+        #vk = vk_real + 1j*vk_imag
+        vk = np.copy(v_multichannel)
+        np.save('data/vk_real.npy', np.real(vk))
+        np.save('data/vk_imag.npy', np.imag(vk))
+
+        #d_real = np.load('data/d_real.npy')
+        #d_imag = np.load('data/d_imag.npy')
+        #d = d_real + 1j*d_imag
+        #d = d.flatten()
+        np.save('data/d_real.npy', np.real(d))
+        np.save('data/d_imag.npy', np.imag(d))
+
+        Tmp = 40/1000
+        M = int(Tmp/T)
+        d_hat, mse_out = dfe_matlab(vk, d, Ns, Nd, M)
+
+        mse[ind] = mse_out
 
         # plot const
         plt.subplot(2, 2, int(ind+1))
