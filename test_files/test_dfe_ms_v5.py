@@ -314,37 +314,45 @@ if __name__ == "__main__":
         #for repeat in range(4):
         snr = 10**(0.1 * snr_db[ind])
         d0 = el_spacing
-
-        r_multi, wk = transmit(s,snr,n_rx,d0,R,fc,Fs) # should come out as an n-by-zero
-        r_multi = transmit_simple(s,snr,n_rx)
-        peaks_rx = 0
-        v_multichannel = []
-        for i in range(len(r_multi[0,:])):
-            r = np.squeeze(r_multi[:, i])
-            vr = r * np.exp(-2 * np.pi * 1j * fc * np.arange(len(r))/Fs)
-            v_xcorr = np.copy(vr)
-            #v = np.convolve(v, rc_rx, "full")
-            if i == 0:
-                xcorr_for_peaks = np.abs(sg.fftconvolve(v_xcorr, sg.resample_poly(d[::-1].conj(),uf,1))) # correalte and sync at sample rate sg.decimate(v, int(ns)),
-                xcorr_for_peaks /= xcorr_for_peaks.max()
-                time_axis_xcorr = np.arange(0, len(xcorr_for_peaks)) / R * 1e3  # ms
-                peaks_rx, _ = sg.find_peaks(
-                    xcorr_for_peaks, height=0.2, distance=len(d) - 100
-                )
-                #plt.figure()
-                #plt.plot(np.abs(xcorr_for_peaks))
-                #plt.show()
-            vr = vr[int(peaks_rx[1]) :] # * ns
-            v = sg.resample_poly(vr,1,Fs/fs)
-            v = np.copy(u)
+        for i in range(K0):
+            Tmp = 40/1000
+            tau = (3 + np.random.randint(1,33,6))/1000
+            h = np.exp(-tau/Tmp)
+            h /= np.sqrt(np.sum(np.abs(h)))
+            taus = tau/Ts
+            v = np.zeros(len(u) + int(np.max(taus)),dtype=complex)
+            for p in range(len(tau)):
+                taup = int(taus[p])
+                vp = np.append(np.zeros(taup),h[p]*u)
+                lendiff = len(v) - len(vp)
+                if lendiff > 0:
+                    vp = np.append(vp,np.zeros(lendiff))
+                elif lendiff < 0:
+                    v = np.append(v,np.zeros(lendiff))
+                v = v+vp
             v /= np.sqrt(pwr(v))
             v = transmit_passband(v,Fs,fs,fc)
+            vp = v[:len(up)+Nz*Ns]
+            delval,_ = fdel(vp,up)
+            vp1 = vp[delval:delval+len(up)]
+
+            fde,_,_ = fdop(vp1,up,fs,12)
+            v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
+            v = sg.resample_poly(v,int(10**4),int((1/(1+fde/fc))*10**4))
+
+            v = v[delval:delval+len(u)-1]
             v = v[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
             v = sg.resample_poly(v,2,Ns)
             v = np.concatenate((v,np.zeros(Nplus*2))) # should occur after 
             if i == 0:
                 v_multichannel = v
+                lenvm = len(v)
             else:
+                lendiff = lenvm - len(v)
+                if lendiff > 0:
+                    v = np.append(v,np.zeros(lendiff))
+                elif lendiff < 0:
+                    v_multichannel = np.concatenate((v_multichannel,np.zeros((K0,-lendiff))),axis=1)
                 v_multichannel = np.vstack((v_multichannel,v))
         # dfe
         # d_adj = np.tile(d,rep)
