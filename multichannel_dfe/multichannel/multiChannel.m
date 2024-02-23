@@ -91,17 +91,17 @@ end
 
 %%
 
-vk_real = readNPY('../../data/vk_real.npy');
-vk_imag = readNPY('../../data/vk_imag.npy');
+%vk_real = readNPY('../../data/vk_real.npy');
+%vk_imag = readNPY('../../data/vk_imag.npy');
 %vk = vk_real + 1j*vk_imag;
-%writeNPY(real(vk),'../../data/vk_real.npy')
-%writeNPY(imag(vk),'../../data/vk_imag.npy')
+writeNPY(real(vk),'../../data/vk_real.npy')
+writeNPY(imag(vk),'../../data/vk_imag.npy')
 
-d_real = readNPY('../../data/vk_real.npy');
-d_imag = readNPY('../../data/vk_imag.npy');
+%d_real = readNPY('../../data/vk_real.npy');
+%d_imag = readNPY('../../data/vk_imag.npy');
 %d = d_real + 1j*d_imag;
-%writeNPY(real(d),'../../data/vk_real.npy')
-%writeNPY(imag(d),'../../data/vk_imag.npy')
+writeNPY(real(d),'../../data/vk_real.npy')
+writeNPY(imag(d),'../../data/vk_imag.npy')
 figure;
 K = 8;
 

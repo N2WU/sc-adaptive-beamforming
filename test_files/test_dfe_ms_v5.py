@@ -246,18 +246,17 @@ def dfe_matlab(vk, d, Ns, Nd, M):
 
             # RLS
             k = (
-                np.matmul(P, y)
-                / L
+                np.matmul(P, y) / L
                 / (1 + np.matmul(np.matmul(y.conj(), P), y) / L)
             )
-            c += k * e.conj()
+            c += k * np.conj(e)
             P = P / L - np.matmul(np.outer(k, y.conj()), P) / L
 
             a = c[:int(K*N)]
             b = -c[int(K*N):int(K*N+M)]
             # b = -c[K*N:K*N+M]
-            d_tilde_buf = np.append(d[n], d_tilde)
-            d_tilde = d_tilde_buf[:M]
+            d_tilde = np.append(d[n], d_tilde)
+            d_tilde = d_tilde[:M]
 
         mse = 10 * np.log10(
             np.mean(np.abs(d[Nt : -1 ] - d_hat[Nt : -1]) ** 2)
@@ -328,7 +327,7 @@ if __name__ == "__main__":
                 if lendiff > 0:
                     vp = np.append(vp,np.zeros(lendiff))
                 elif lendiff < 0:
-                    v = np.append(v,np.zeros(lendiff))
+                    v = np.append(v,np.zeros(-lendiff))
                 v = v+vp
             v /= np.sqrt(pwr(v))
             v = transmit_passband(v,Fs,fs,fc)
@@ -352,29 +351,32 @@ if __name__ == "__main__":
                 if lendiff > 0:
                     v = np.append(v,np.zeros(lendiff))
                 elif lendiff < 0:
-                    v_multichannel = np.concatenate((v_multichannel,np.zeros((K0,-lendiff))),axis=1)
+                    if i == 1:
+                        v_multichannel = v_multichannel.reshape(1,-1)
+                    v_multichannel = np.concatenate((v_multichannel,np.zeros((len(v_multichannel[:,0]),-lendiff))),axis=1)
                 v_multichannel = np.vstack((v_multichannel,v))
+                lenvm = len(v_multichannel[0,:])
         # dfe
         # d_adj = np.tile(d,rep)
         if n_rx == 1:
             v_multichannel = v_multichannel[None,:]
         # resample v_multichannel for frac spac
-        # v_multichannel = sg.resample_poly(v_multichannel,2,Ns,axis=1)
-        #vk_real = np.load('data/vk_real.npy')
-        #vk_imag = np.load('data/vk_imag.npy')
-        #vk = vk_real + 1j*vk_imag
         vk = np.copy(v_multichannel)
-        np.save('data/vk_real.npy', np.real(vk))
-        np.save('data/vk_imag.npy', np.imag(vk))
+        # v_multichannel = sg.resample_poly(v_multichannel,2,Ns,axis=1)
+        vk_real = np.load('data/vk_real.npy')
+        vk_imag = np.load('data/vk_imag.npy')
+        vk = vk_real + 1j*vk_imag
+        #np.save('data/vk_real.npy', np.real(vk))
+        #np.save('data/vk_imag.npy', np.imag(vk))
 
-        #d_real = np.load('data/d_real.npy')
-        #d_imag = np.load('data/d_imag.npy')
-        #d = d_real + 1j*d_imag
-        #d = d.flatten()
-        np.save('data/d_real.npy', np.real(d))
-        np.save('data/d_imag.npy', np.imag(d))
+        d_real = np.load('data/d_real.npy')
+        d_imag = np.load('data/d_imag.npy')
+        d = d_real + 1j*d_imag
+        d = d.flatten()
+        #np.save('data/d_real.npy', np.real(d))
+        #np.save('data/d_imag.npy', np.imag(d))
 
-        Tmp = 40/1000 # maybe you could move this to peaks_rx[]
+        # Tmp = 40/1000 # maybe you could move this to peaks_rx[]
         M = int(Tmp/T) # just creates the n_fb value
         d_hat, mse_out = dfe_matlab(vk, d, Ns, Nd, M)
 

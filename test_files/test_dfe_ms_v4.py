@@ -362,19 +362,19 @@ if __name__ == "__main__":
             v_multichannel = v_multichannel[None,:]
         # resample v_multichannel for frac spac
         # v_multichannel = sg.resample_poly(v_multichannel,2,Ns,axis=1)
-        #vk_real = np.load('data/vk_real.npy')
-        #vk_imag = np.load('data/vk_imag.npy')
-        #vk = vk_real + 1j*vk_imag
+        vk_real = np.load('data/vk_real.npy')
+        vk_imag = np.load('data/vk_imag.npy')
+        vk = vk_real + 1j*vk_imag
         vk = np.copy(v_multichannel)
-        np.save('data/vk_real.npy', np.real(vk))
-        np.save('data/vk_imag.npy', np.imag(vk))
+        #np.save('data/vk_real.npy', np.real(vk))
+        #np.save('data/vk_imag.npy', np.imag(vk))
 
-        #d_real = np.load('data/d_real.npy')
-        #d_imag = np.load('data/d_imag.npy')
-        #d = d_real + 1j*d_imag
-        #d = d.flatten()
-        np.save('data/d_real.npy', np.real(d))
-        np.save('data/d_imag.npy', np.imag(d))
+        d_real = np.load('data/d_real.npy')
+        d_imag = np.load('data/d_imag.npy')
+        d = d_real + 1j*d_imag
+        d = d.flatten()
+        #np.save('data/d_real.npy', np.real(d))
+        #np.save('data/d_imag.npy', np.imag(d))
 
         Tmp = 40/1000
         M = int(Tmp/T)
