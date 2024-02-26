@@ -30,7 +30,7 @@ K0 = 10;
 Ns = 7;
 Nplus = 4;
 vk = [];
-load = 0;
+load = 'True';
 for k = 1:K0    % repeat v 10 K0 times, add noise to each signal
     Tmp=40/1000;
     % tau=(3+[0 5 7 14 27 33])/1000;
@@ -92,7 +92,7 @@ end
 
 %%
 
-if load == 1
+if load == True
     vk_real = readNPY('../../data/vk_real.npy');
     vk_imag = readNPY('../../data/vk_imag.npy');
     vk = vk_real + 1j*vk_imag;

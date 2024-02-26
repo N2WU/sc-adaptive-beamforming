@@ -10,14 +10,16 @@ def rcos(alpha, Ns, trunc):
     p = np.sin(np.pi* tn)/(np.pi*tn) * np.cos(np.pi * alpha * tn) / (1 - 4 * (alpha**2) * (tn**2))
     p[np.isnan(p)] = 0  # Replace NaN with 0
     p[np.isinf(p)] = 0
-    p[-1] = 1
+    p[-1] = 0
+    p[int(Ns*trunc)] = 1
     return p
 
 def fdel(v, u):
     N = np.ceil(np.log2(len(v)))  # First 2^N that will do
-    times = (np.fft.fft(v, int(2**N)) * np.conj(np.fft.fft(u, int(2**N))))
-    x = np.fft.ifft(times)
-    del_val = np.argmax(x)
+    x = np.fft.ifft(np.fft.fft(v, int(2**N), ) *
+    np.conj(np.fft.fft(u, int(2**N)))
+    )
+    del_val = np.argmax(np.abs(x))
     return del_val, x
 
 def fdop(v, u, fs, Ndes):
@@ -32,8 +34,8 @@ def fdop(v, u, fs, Ndes):
     f = (np.arange(2**N)-(2**N)/2 -1)/(2**N)*fs
     #f = ((np.arange(1, 2**N + 1) - 2**(N - 1) - 1) / (2**N)) * fs
 
-    m, i = np.max(X), np.argmax(X)
-    fd = f[i]
+    i = np.argmax(np.abs(X))
+    fd = f[i+1]
 
     return fd, X, N
 
@@ -139,11 +141,15 @@ def transmit_simple(s,snr,n_rx):
     r_multi += np.tile(r,(n_rx,1))
     return r_multi.T
 
-def transmit_passband(v,Fs,fs,fc):
+def transmit_passband(v,snr,Fs,fs,fc):
     vs = sg.resample_poly(v,Fs,fs)
     s = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
     a = 1/350
-    r = sg.resample_poly(s,int(10**4),int((1+a)*10**4))
+    r = sg.resample_poly(s,int(10**4),int((1+a)*(10**4)))
+    zr = np.sqrt(1/(2*snr))*np.random.randn(len(r))
+    zi = np.sqrt(1/(2*snr))*np.random.randn(len(r))
+    z = zr + 1j*zi
+    r = r + z
     vr = 2*r*np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
     v = sg.resample_poly(vr,1,Fs/fs)
     return v
@@ -299,11 +305,13 @@ if __name__ == "__main__":
     us = sg.resample_poly(u,Fs,fs)
     # upshift
     s = np.real(us * np.exp(2j * np.pi * fc * np.arange(len(us)) / Fs))
-    s /= np.max(np.abs(s))
+    # s /= np.max(np.abs(s))
 
     snr_db = np.array([30, 31, 32, 33])
     mse = np.zeros_like(snr_db)
     mse_dl = np.zeros_like(snr_db)
+
+    load = False
 
     K0 = 10
     Ns = 7
@@ -330,16 +338,23 @@ if __name__ == "__main__":
                     v = np.append(v,np.zeros(-lendiff))
                 v = v+vp
             v /= np.sqrt(pwr(v))
-            v = transmit_passband(v,Fs,fs,fc)
+            v = transmit_passband(v,snr,Fs,fs,fc)
             vp = v[:len(up)+Nz*Ns]
             delval,_ = fdel(vp,up)
             vp1 = vp[delval:delval+len(up)]
-
+            #vp1r = np.load('data/vp1_real.npy')
+            #vp1i = np.load('data/vp1_imag.npy')
+            #vp1 = vp1r + 1j*vp1i
+            #vp1 = vp1.flatten()
+            #upr = np.load('data/up_real.npy')
+            #upi = np.load('data/up_imag.npy')
+            #up = upr + 1j*upi 
+            #up = up.flatten()
             fde,_,_ = fdop(vp1,up,fs,12)
             v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
-            v = sg.resample_poly(v,int(10**4),int((1/(1+fde/fc))*10**4))
+            v = sg.resample_poly(v,int(10**4),int((1/(1+fde/fc))*(10**4)))
 
-            v = v[delval:delval+len(u)-1]
+            v = v[delval:delval+len(u)]
             v = v[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
             v = sg.resample_poly(v,2,Ns)
             v = np.concatenate((v,np.zeros(Nplus*2))) # should occur after 
@@ -356,25 +371,24 @@ if __name__ == "__main__":
                     v_multichannel = np.concatenate((v_multichannel,np.zeros((len(v_multichannel[:,0]),-lendiff))),axis=1)
                 v_multichannel = np.vstack((v_multichannel,v))
                 lenvm = len(v_multichannel[0,:])
-        # dfe
-        # d_adj = np.tile(d,rep)
         if n_rx == 1:
             v_multichannel = v_multichannel[None,:]
-        # resample v_multichannel for frac spac
-        vk = np.copy(v_multichannel)
-        # v_multichannel = sg.resample_poly(v_multichannel,2,Ns,axis=1)
-        vk_real = np.load('data/vk_real.npy')
-        vk_imag = np.load('data/vk_imag.npy')
-        vk = vk_real + 1j*vk_imag
-        #np.save('data/vk_real.npy', np.real(vk))
-        #np.save('data/vk_imag.npy', np.imag(vk))
 
-        d_real = np.load('data/d_real.npy')
-        d_imag = np.load('data/d_imag.npy')
-        d = d_real + 1j*d_imag
-        d = d.flatten()
-        #np.save('data/d_real.npy', np.real(d))
-        #np.save('data/d_imag.npy', np.imag(d))
+        vk = np.copy(v_multichannel)
+
+        if load:
+            vk_real = np.load('data/vk_real.npy')
+            vk_imag = np.load('data/vk_imag.npy')
+            vk = vk_real + 1j*vk_imag
+            d_real = np.load('data/d_real.npy')
+            d_imag = np.load('data/d_imag.npy')
+            d = d_real + 1j*d_imag
+            d = d.flatten()
+        else: 
+            np.save('data/vk_real.npy', np.real(vk))
+            np.save('data/vk_imag.npy', np.imag(vk))
+            np.save('data/d_real.npy', np.real(d))
+            np.save('data/d_imag.npy', np.imag(d))
 
         # Tmp = 40/1000 # maybe you could move this to peaks_rx[]
         M = int(Tmp/T) # just creates the n_fb value
