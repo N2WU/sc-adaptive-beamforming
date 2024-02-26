@@ -135,7 +135,7 @@ def transmit(s,snr,n_rx,el_spacing,R,fc,fs):
 
 def transmit_simple(s,snr,n_rx):
     a = 1/350
-    r = sg.resample_poly(s,int(10**4),int((1+a)*10**4))
+    r = sg.resample_poly(s,np.rint(10**4),np.rint((1+a)*10**4))
     rng = np.random.RandomState(2021)
     r_multi = rng.randn(n_rx,len(r)) / snr
     r_multi += np.tile(r,(n_rx,1))
@@ -145,7 +145,7 @@ def transmit_passband(v,snr,Fs,fs,fc):
     vs = sg.resample_poly(v,Fs,fs)
     s = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
     a = 1/350
-    r = sg.resample_poly(s,int(10**4),int((1+a)*(10**4)))
+    r = sg.resample_poly(s,np.rint(10**4),np.rint((1+a)*(10**4)))
     zr = np.sqrt(1/(2*snr))*np.random.randn(len(r))
     zi = np.sqrt(1/(2*snr))*np.random.randn(len(r))
     z = zr + 1j*zi
@@ -190,7 +190,7 @@ def dfe_matlab(vk, d, Ns, Nd, M):
         K = len(vk[:,0]) # maximum
         Ns = 2
         N = int(6 * Ns)
-        # M = int(0)
+        # M = np.rint(0)
         delta = 10**(-3)
         Nt = 4*(N+M)
         FS = 2
@@ -222,6 +222,7 @@ def dfe_matlab(vk, d, Ns, Nd, M):
                 :, int(nb + np.ceil(Ns / FS / 2)-1) : int(nb + Ns)
                 : int(Ns / FS)
             ]
+            print(int(nb + np.ceil(Ns / FS / 2)-1),",",int(nb + Ns))
             for k in range(K):
                xn[k,:] *= np.exp(-1j * f[n,k])
             xn = np.fliplr(xn)
@@ -236,7 +237,6 @@ def dfe_matlab(vk, d, Ns, Nd, M):
             d_hat[n] = psum - q
 
             if n > Nt:
-                #d[n] = (d_hat[n] > 0)*2 - 1
                 d[n] = dec4psk(d_hat[n])
 
             e = d[n]- d_hat[n]
@@ -288,7 +288,7 @@ if __name__ == "__main__":
     R = 1/T
     B = R*(1+alpha)
     Nso = Ns
-    uf = int(fs / R)
+    uf = np.rint(fs / R)
 
     n_rx = 12
     d_lambda = 0.5 #np.array([0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]) #
@@ -326,7 +326,7 @@ if __name__ == "__main__":
             tau = (3 + np.random.randint(1,33,6))/1000
             h = np.exp(-tau/Tmp)
             h /= np.sqrt(np.sum(np.abs(h)))
-            taus = tau/Ts
+            taus = np.rint(tau/Ts)
             v = np.zeros(len(u) + int(np.max(taus)),dtype=complex)
             for p in range(len(tau)):
                 taup = int(taus[p])
@@ -342,17 +342,9 @@ if __name__ == "__main__":
             vp = v[:len(up)+Nz*Ns]
             delval,_ = fdel(vp,up)
             vp1 = vp[delval:delval+len(up)]
-            #vp1r = np.load('data/vp1_real.npy')
-            #vp1i = np.load('data/vp1_imag.npy')
-            #vp1 = vp1r + 1j*vp1i
-            #vp1 = vp1.flatten()
-            #upr = np.load('data/up_real.npy')
-            #upi = np.load('data/up_imag.npy')
-            #up = upr + 1j*upi 
-            #up = up.flatten()
             fde,_,_ = fdop(vp1,up,fs,12)
             v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
-            v = sg.resample_poly(v,int(10**4),int((1/(1+fde/fc))*(10**4)))
+            v = sg.resample_poly(v,np.rint(10**4),np.rint((1/(1+fde/fc))*(10**4)))
 
             v = v[delval:delval+len(u)]
             v = v[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
@@ -391,7 +383,8 @@ if __name__ == "__main__":
             np.save('data/d_imag.npy', np.imag(d))
 
         # Tmp = 40/1000 # maybe you could move this to peaks_rx[]
-        M = int(Tmp/T) # just creates the n_fb value
+        M = np.rint(Tmp/T) # just creates the n_fb value
+        M = int(M)
         d_hat, mse_out = dfe_matlab(vk, d, Ns, Nd, M)
 
         mse[ind] = mse_out

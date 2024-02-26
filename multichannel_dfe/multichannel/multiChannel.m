@@ -30,7 +30,9 @@ K0 = 10;
 Ns = 7;
 Nplus = 4;
 vk = [];
-load = 0;
+
+load = 1;
+
 for k = 1:K0    % repeat v 10 K0 times, add noise to each signal
     Tmp=40/1000;
     % tau=(3+[0 5 7 14 27 33])/1000;
@@ -133,6 +135,7 @@ et = zeros(Nd,1);
 for n = 1:Nd
     nb = (n-1) * Ns + (Nplus-1) * Ns;
     xn = v(:, nb + ceil(Ns/FS/2) : Ns/FS : nb + Ns);
+    [nb+ceil(Ns/FS/2), nb+Ns]
     for k = 1:K
         xn(k,:) = xn(k,:)*exp(-1i*f(n,k));
     end
