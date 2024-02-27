@@ -2,9 +2,8 @@ import numpy as np
 import scipy.signal as sg
 import matplotlib.pyplot as plt
 
-# 2024-02-22: init commit
-# this code simulates passband modulation
-# 2024-02-27: final
+# 2024-02-27: initial commit
+# this code simulates noisy two-path reflected environment
 
 def rcos(alpha, Ns, trunc):
     tn = np.arange(-trunc * Ns, trunc * Ns+1) / Ns
@@ -55,6 +54,7 @@ def pwr(x):
     p = np.sum(np.abs(x)**2)/len(x)
     return p
 
+def transmit(s,snr,n_rx,el_spacing,R,fc,fs):
     reflection_list = np.asarray([1,0.5]) # reflection gains
     n_path = len(reflection_list)  
     x_tx_list = np.array([5,-5]) 
@@ -133,6 +133,50 @@ def pwr(x):
     r_multichannel_1 = y
     return r_multichannel, wk
 
+def transmit_simple(v,snr,Fs,fs,fc,n_rx,d0,uf):
+    reflection_list = np.asarray([1,0.5]) # reflection gains
+    n_path = len(reflection_list)  
+    x_tx_list = np.array([5,-5]) 
+    y_tx_list = np.array([20,20])
+    c = 343
+    duration = 10 # amount of padding, basically
+    x_rx = np.arange(0, d0*n_rx, d0)
+    y_rx = np.zeros_like(x_rx)
+    rng = np.random.RandomState(2021)
+    vs = sg.resample_poly(v,Fs,fs)
+    s = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
+    a = 1/350
+    r_multi = rng.randn(int(duration * fs), n_rx) / snr
+    for i in range(len(reflection_list)):
+        x_tx, y_tx = x_tx_list[i], y_tx_list[i]
+        reflection = reflection_list[i] #delay and sum not scale
+        dx, dy = x_rx - x_tx, y_rx - y_tx
+        d_rx_tx = np.sqrt(dx**2 + dy**2)
+        delta_tau = d_rx_tx / c
+        delay = np.round(delta_tau * fs).astype(int) # sample delay
+        for j, delay_j in enumerate(delay):
+            r_multi[delay_j:delay_j+len(s), j] += reflection * s
+    peaks_rx = 0
+    for i in range(len(r_multi[0,:])):
+        r = np.squeeze(r_multi[:, i])
+        vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
+        v_xcorr = np.copy(vr)
+        #v = np.convolve(v, rc_rx, "full")
+        if i == 0:
+            xcorr_for_peaks = np.abs(sg.fftconvolve(v_xcorr, sg.resample_poly(d[::-1].conj(),uf,1))) # correalte and sync at sample rate sg.decimate(v, int(ns)),
+            xcorr_for_peaks /= xcorr_for_peaks.max()
+            time_axis_xcorr = np.arange(0, len(xcorr_for_peaks)) / R * 1e3  # ms
+            peaks_rx, _ = sg.find_peaks(
+                xcorr_for_peaks, height=0.2, distance=len(d) - 100
+            )
+            #plt.figure()
+            #plt.plot(np.abs(xcorr_for_peaks))
+            #plt.show()
+        # vr = vr[int(peaks_rx[1]) :] # * ns
+    #vr = 2*r*np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
+    v = sg.resample_poly(vr,1,Fs/fs)
+    return v
+
 def transmit_passband(v,snr,Fs,fs,fc):
     vs = sg.resample_poly(v,Fs,fs)
     s = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
@@ -145,6 +189,29 @@ def transmit_passband(v,snr,Fs,fs,fc):
     vr = 2*r*np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
     v = sg.resample_poly(vr,1,Fs/fs)
     return v
+
+def transmit_dl(s_dl,snr,n_rx,el_spacing,R,fc,fs):
+    reflection_list = np.asarray([1,0.5]) # reflection gains
+    n_path = len(reflection_list)  
+    x_rx_list = np.array([5,-5]) 
+    y_rx_list = np.array([20,20])
+    c = 343
+    duration = 10 # amount of padding, basically
+    x_tx = np.arange(0, el_spacing*n_rx, el_spacing)
+    y_tx = np.zeros_like(x_tx)
+    rng = np.random.RandomState(2021)
+    r_single = rng.randn(duration * fs) / snr
+    r_single = r_single.astype('complex')
+    for i in range(len(reflection_list)):
+        x_rx, y_rx = x_rx_list[i], y_rx_list[i]
+        reflection = reflection_list[i] #delay and sum not scale
+        dx, dy = x_rx - x_tx, y_rx - y_tx
+        d_rx_tx = np.sqrt(dx**2 + dy**2)
+        delta_tau = d_rx_tx / c
+        delay = np.round(delta_tau * fs).astype(int) # sample delay
+        for j, delay_j in enumerate(delay):
+            r_single[delay_j:delay_j+len(s)] += reflection * s_dl[j,:]
+    return r_single
 
 def dec4psk(x):
     xr = np.real(x)
@@ -256,7 +323,7 @@ if __name__ == "__main__":
     R = 1/T
     B = R*(1+alpha)
     Nso = Ns
-    uf = np.rint(fs / R)
+    uf = int(fs / R)
 
     n_rx = 12
     d_lambda = 0.5 #np.array([0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]) #
@@ -275,11 +342,12 @@ if __name__ == "__main__":
     s = np.real(us * np.exp(2j * np.pi * fc * np.arange(len(us)) / Fs))
     # s /= np.max(np.abs(s))
 
-    snr_db = np.array([30, 31, 32, 33])
+    snr_db = np.array([5, 8, 12, 15])
     mse = np.zeros_like(snr_db)
     mse_dl = np.zeros_like(snr_db)
 
-    load = True
+    load = False
+    downlink = False
 
     K0 = 10
     Ns = 7
@@ -306,14 +374,19 @@ if __name__ == "__main__":
                     v = np.append(v,np.zeros(-lendiff))
                 v = v+vp
             v /= np.sqrt(pwr(v))
-            v = transmit_passband(v,snr,Fs,fs,fc)
+            #v = transmit_passband(v,snr,Fs,fs,fc)
+            v = transmit_simple(v,snr,Fs,fs,fc,n_rx,d0,uf) # this already does rough phase alignment
             vp = v[:len(up)+Nz*Ns]
             delval,_ = fdel(vp,up)
             vp1 = vp[delval:delval+len(up)]
+            lendiff = len(up)-len(vp1)
+            if lendiff > 0:
+                vp1 = np.append(vp1, np.zeros(lendiff))
             fde,_,_ = fdop(vp1,up,fs,12)
             v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
             v = sg.resample_poly(v,np.rint(10**4),np.rint((1/(1+fde/fc))*(10**4)))
-
+            
+            # v = v[:len(u)]
             v = v[delval:delval+len(u)]
             v = v[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
             v = sg.resample_poly(v,2,Ns)

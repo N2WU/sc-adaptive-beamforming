@@ -2,9 +2,9 @@ import numpy as np
 import scipy.signal as sg
 import matplotlib.pyplot as plt
 
-# 2024-02-22: init commit
-# this code simulates passband modulation
-# 2024-02-27: final
+# 2024-02-27: initial commit
+# this code simulates noisy two-path reflected environment
+# then transmits the adjusted signal back
 
 def rcos(alpha, Ns, trunc):
     tn = np.arange(-trunc * Ns, trunc * Ns+1) / Ns
@@ -55,6 +55,7 @@ def pwr(x):
     p = np.sum(np.abs(x)**2)/len(x)
     return p
 
+def transmit_s(s,snr,n_rx,el_spacing,R,fc,fs):
     reflection_list = np.asarray([1,0.5]) # reflection gains
     n_path = len(reflection_list)  
     x_tx_list = np.array([5,-5]) 
@@ -133,18 +134,127 @@ def pwr(x):
     r_multichannel_1 = y
     return r_multichannel, wk
 
-def transmit_passband(v,snr,Fs,fs,fc):
+def transmit(v,snr,Fs,fs,fc,n_rx,d0,uf):
+    reflection_list = np.asarray([1,0.5]) # reflection gains
+    n_path = len(reflection_list)  
+    x_tx_list = np.array([5,-5]) 
+    y_tx_list = np.array([20,20])
+    c = 343
+    duration = 10 # amount of padding, basically
+    x_rx = np.arange(0, d0*n_rx, d0)
+    y_rx = np.zeros_like(x_rx)
+    rng = np.random.RandomState(2021)
     vs = sg.resample_poly(v,Fs,fs)
     s = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
     a = 1/350
-    r = sg.resample_poly(s,np.rint(10**4),np.rint((1+a)*(10**4)))
-    zr = np.sqrt(1/(2*snr))*np.random.randn(len(r))
-    zi = np.sqrt(1/(2*snr))*np.random.randn(len(r))
-    z = zr + 1j*zi
-    r = r + z
-    vr = 2*r*np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
+    r_multi = rng.randn(int(duration * fs), n_rx) / snr
+    for i in range(len(reflection_list)):
+        x_tx, y_tx = x_tx_list[i], y_tx_list[i]
+        reflection = reflection_list[i] #delay and sum not scale
+        dx, dy = x_rx - x_tx, y_rx - y_tx
+        d_rx_tx = np.sqrt(dx**2 + dy**2)
+        delta_tau = d_rx_tx / c
+        delay = np.round(delta_tau * fs).astype(int) # sample delay
+        for j, delay_j in enumerate(delay):
+            r_multi[delay_j:delay_j+len(s), j] += reflection * s
+    peaks_rx = 0
+    for i in range(len(r_multi[0,:])):
+        r = np.squeeze(r_multi[:, i])
+        vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
+        v_xcorr = np.copy(vr)
+        #v = np.convolve(v, rc_rx, "full")
+        if i == 0:
+            xcorr_for_peaks = np.abs(sg.fftconvolve(v_xcorr, sg.resample_poly(d[::-1].conj(),uf,1))) # correalte and sync at sample rate sg.decimate(v, int(ns)),
+            xcorr_for_peaks /= xcorr_for_peaks.max()
+            time_axis_xcorr = np.arange(0, len(xcorr_for_peaks)) / R * 1e3  # ms
+            peaks_rx, _ = sg.find_peaks(
+                xcorr_for_peaks, height=0.2, distance=len(d) - 100
+            )
     v = sg.resample_poly(vr,1,Fs/fs)
-    return v
+    
+    # now beamforming and weights
+    r = r_multi #[:,:M]
+    M = int(len(r[0,:]))
+    r_fft = np.fft.fft(r, axis=0)
+    freqs = np.fft.fftfreq(len(r[:, 0]), 1/fs)
+
+    index = np.where((freqs >= fc-R/2) & (freqs < fc+R/2))[0]
+    N = len(index) #uhh???
+    fk = freqs[index]       
+    yk = r_fft[index, :]    # N*M
+    theta_start = -45
+    theta_end = 45
+    N_theta = 200
+    S_theta = np.zeros((N_theta,))
+    S_theta3D = np.zeros((N_theta, N))
+    theta_start = np.deg2rad(theta_start)
+    theta_end = np.deg2rad(theta_end)
+    theta_list = np.linspace(theta_start, theta_end, N_theta)
+    for n_theta, theta in enumerate(theta_list):
+        d_tau = np.sin(theta) * el_spacing/c
+        # for k in range(N):
+        #     S_M = np.exp(-2j * np.pi * fk[k] * d_tau * np.arange(M).reshape(M,1))
+        #     S_theta[n_theta] += np.abs(np.vdot(S_M.T, yk[k, :].T))**2
+        S_M = np.exp(-2j * np.pi * d_tau * np.dot(fk.reshape(N, 1), np.arange(M).reshape(1, M)))    # N*M
+        SMxYk = np.einsum('ij,ji->i', S_M.conj(), yk.T)
+        S_theta[n_theta] = np.real(np.vdot(SMxYk, SMxYk))
+        S_theta3D[n_theta, :] = np.abs(SMxYk)**2
+
+    # n_path = 1 # number of path
+    S_theta_peaks_idx, _ = sg.find_peaks(S_theta, height=0)
+    S_theta_peaks = S_theta[S_theta_peaks_idx]
+    theta_m_idx = np.argsort(S_theta_peaks)
+    theta_m = theta_list[S_theta_peaks_idx[theta_m_idx[-n_path:]]]
+    # print(theta_m/np.pi*180)
+
+    y_tilde = np.zeros((N,n_path), dtype=complex)
+    for k in range(N):
+        d_tau_m = np.sin(theta_m) * el_spacing/c
+        try:
+            d_tau_new = d_tau_m.reshape(1, n_path)
+        except:
+            d_tau_new = np.append(d_tau_m, [0])
+            d_tau_new = d_tau_new.reshape(1, n_path)
+        Sk = np.exp(-2j * np.pi * fk[k] * np.arange(M).reshape(M, 1) @ d_tau_new)
+        for i in range(n_path):
+            e_pu = np.zeros((n_path,1))
+            e_pu[i, 0] = 1
+            wk = Sk @ np.linalg.inv(Sk.conj().T @ Sk) @ e_pu
+            y_tilde[k, i] = wk.conj().T @ yk[k, :].T
+
+    y_fft = np.zeros((len(r[:, 0]), n_path), complex)
+    y_fft[index, :] = y_tilde
+    y = np.fft.ifft(y_fft, axis=0)
+    return v, wk
+
+def transmit_dl(v_dl,wk,snr,n_rx,el_spacing,R,fc,fs):
+    vs = sg.resample_poly(v_dl,Fs,fs)
+    s_dl = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
+    # apply wk here
+    s_dl = np.dot(np.reshape(wk,[-1,1]),np.reshape(s_dl,[1,-1]))
+    reflection_list = np.asarray([1,0.5]) # reflection gains 
+    x_rx_list = np.array([5,-5]) 
+    y_rx_list = np.array([20,20])
+    c = 343
+    duration = 10 # amount of padding, basically
+    x_tx = np.arange(0, el_spacing*n_rx, el_spacing)
+    y_tx = np.zeros_like(x_tx)
+    rng = np.random.RandomState(2021)
+    r_single = rng.randn(duration * fs) / snr
+    r_single = r_single.astype('complex')
+    for i in range(len(reflection_list)):
+        x_rx, y_rx = x_rx_list[i], y_rx_list[i]
+        reflection = reflection_list[i] #delay and sum not scale
+        dx, dy = x_rx - x_tx, y_rx - y_tx
+        d_rx_tx = np.sqrt(dx**2 + dy**2)
+        delta_tau = d_rx_tx / c
+        delay = np.round(delta_tau * fs).astype(int) # sample delay
+        for j, delay_j in enumerate(delay):
+            r_single[delay_j:delay_j+len(s)] += reflection * s_dl[j,:]
+        r = np.squeeze(r_single)
+        vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
+        v_single = sg.resample_poly(vr,1,Fs/fs)
+    return v_single
 
 def dec4psk(x):
     xr = np.real(x)
@@ -256,7 +366,7 @@ if __name__ == "__main__":
     R = 1/T
     B = R*(1+alpha)
     Nso = Ns
-    uf = np.rint(fs / R)
+    uf = int(fs / R)
 
     n_rx = 12
     d_lambda = 0.5 #np.array([0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]) #
@@ -275,11 +385,12 @@ if __name__ == "__main__":
     s = np.real(us * np.exp(2j * np.pi * fc * np.arange(len(us)) / Fs))
     # s /= np.max(np.abs(s))
 
-    snr_db = np.array([30, 31, 32, 33])
+    snr_db = np.array([5, 8, 12, 15])
     mse = np.zeros_like(snr_db)
     mse_dl = np.zeros_like(snr_db)
 
-    load = True
+    load = False
+    downlink = False
 
     K0 = 10
     Ns = 7
@@ -306,14 +417,21 @@ if __name__ == "__main__":
                     v = np.append(v,np.zeros(-lendiff))
                 v = v+vp
             v /= np.sqrt(pwr(v))
-            v = transmit_passband(v,snr,Fs,fs,fc)
+            if downlink:
+                v_dl = np.copy(v)
+            #v = transmit_passband(v,snr,Fs,fs,fc)
+            v, wk = transmit(v,snr,Fs,fs,fc,n_rx,d0,uf) # this already does rough phase alignment
             vp = v[:len(up)+Nz*Ns]
             delval,_ = fdel(vp,up)
             vp1 = vp[delval:delval+len(up)]
+            lendiff = len(up)-len(vp1)
+            if lendiff > 0:
+                vp1 = np.append(vp1, np.zeros(lendiff))
             fde,_,_ = fdop(vp1,up,fs,12)
             v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
             v = sg.resample_poly(v,np.rint(10**4),np.rint((1/(1+fde/fc))*(10**4)))
-
+            
+            # v = v[:len(u)]
             v = v[delval:delval+len(u)]
             v = v[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
             v = sg.resample_poly(v,2,Ns)
@@ -350,12 +468,17 @@ if __name__ == "__main__":
             np.save('data/d_real.npy', np.real(d))
             np.save('data/d_imag.npy', np.imag(d))
 
-        # Tmp = 40/1000 # maybe you could move this to peaks_rx[]
         M = np.rint(Tmp/T) # just creates the n_fb value
         M = int(M)
         d_hat, mse_out = dfe_matlab(vk, d, Ns, Nd, M)
 
         mse[ind] = mse_out
+
+        if downlink:
+            v_single = transmit_dl(v_dl,wk,snr,n_rx,el_spacing,R,fc,fs)
+            v_single = v_single.reshape(1,-1)
+            d_hat_dl, mse_out_dl = dfe_matlab(v_single, d, Ns, Nd, M)
+            mse_dl[ind] = mse_out_dl 
 
         # plot const
         plt.subplot(2, 2, int(ind+1))
@@ -364,10 +487,23 @@ if __name__ == "__main__":
         plt.axis([-2, 2, -2, 2])
         plt.title(f'SNR={snr_db[ind]} dB') #(f'd0={d_lambda[ind]}'r'$\lambda$')
 
+        plt.subplot(2, 2, int(ind+1))
+        plt.scatter(np.real(d_hat_dl), np.imag(d_hat_dl), marker='x')
+        plt.axis('square')
+        plt.axis([-2, 2, -2, 2])
+        plt.title(f'SNR={snr_db[ind]} dB') #(f'd0={d_lambda[ind]}'r'$\lambda$')
+
     fig, ax = plt.subplots()
     ax.plot(snr_db,mse,'o')
     ax.set_xlabel(r'SNR (dB)')
     ax.set_ylabel('MSE (dB)')
-    ax.set_title('MSE vs SNR for QPSK Signal')
+    ax.set_title('MSE vs SNR for QPSK Signal UL')
+
+    fig, ax = plt.subplots()
+    ax.plot(snr_db,mse_dl,'o')
+    ax.set_xlabel(r'SNR (dB)')
+    ax.set_ylabel('MSE (dB)')
+    ax.set_title('MSE vs SNR for QPSK Signal DL')
+
     plt.show()
     print(mse)

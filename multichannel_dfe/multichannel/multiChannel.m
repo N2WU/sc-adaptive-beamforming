@@ -173,6 +173,7 @@ for n = 1:Nd
     d_tilde = [d(n) d_tilde]; d_tilde = d_tilde(1:M);
 end
 
+mse = 10*log10(mean(abs(d(1+Nt:end)-d_hat(Nt+1:end).').^2))
 
 % plot
 
