@@ -30,7 +30,9 @@ K0 = 10;
 Ns = 7;
 Nplus = 4;
 vk = [];
-load = 'True';
+
+load = 1;
+
 for k = 1:K0    % repeat v 10 K0 times, add noise to each signal
     Tmp=40/1000;
     % tau=(3+[0 5 7 14 27 33])/1000;
@@ -92,7 +94,7 @@ end
 
 %%
 
-if load == True
+if load == 1
     vk_real = readNPY('../../data/vk_real.npy');
     vk_imag = readNPY('../../data/vk_imag.npy');
     vk = vk_real + 1j*vk_imag;
@@ -133,6 +135,7 @@ et = zeros(Nd,1);
 for n = 1:Nd
     nb = (n-1) * Ns + (Nplus-1) * Ns;
     xn = v(:, nb + ceil(Ns/FS/2) : Ns/FS : nb + Ns);
+    xn(1,:)
     for k = 1:K
         xn(k,:) = xn(k,:)*exp(-1i*f(n,k));
     end
@@ -142,6 +145,7 @@ for n = 1:Nd
 
     for k = 1:K
         p(k) = x(k,:)*a(1,(k-1)*N+1:k*N)';
+        a_log(k,:) = a(1,(k-1)*N+1:k*N)';
     end
     psum = sum(p);
 

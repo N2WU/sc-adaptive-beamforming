@@ -213,6 +213,7 @@ def dfe_matlab(vk, d, Ns, Nd, M):
         d_tilde = np.zeros(M, dtype=complex)
         Sf = np.zeros(K)
         x = np.zeros((K,N), dtype=complex)
+        a_log = np.zeros_like(x, dtype=complex)
         et = np.zeros(Nd, dtype=complex)
         d_hat = np.zeros_like(d, dtype=complex)
 
@@ -222,7 +223,6 @@ def dfe_matlab(vk, d, Ns, Nd, M):
                 :, int(nb + np.ceil(Ns / FS / 2)-1) : int(nb + Ns)
                 : int(Ns / FS)
             ]
-            print(int(nb + np.ceil(Ns / FS / 2)-1),",",int(nb + Ns))
             for k in range(K):
                xn[k,:] *= np.exp(-1j * f[n,k])
             xn = np.fliplr(xn)
@@ -232,6 +232,7 @@ def dfe_matlab(vk, d, Ns, Nd, M):
             for k in range(K):
                 p[k] = np.inner(x[k,:], np.conj(a[(k*N):(k+1)*N]))
             psum = p.sum()
+            #print(psum)
 
             q = np.inner(d_tilde, b.conj())
             d_hat[n] = psum - q
@@ -260,7 +261,6 @@ def dfe_matlab(vk, d, Ns, Nd, M):
 
             a = c[:int(K*N)]
             b = -c[int(K*N):int(K*N+M)]
-            # b = -c[K*N:K*N+M]
             d_tilde = np.append(d[n], d_tilde)
             d_tilde = d_tilde[:M]
 

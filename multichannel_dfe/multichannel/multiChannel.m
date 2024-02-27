@@ -98,14 +98,14 @@ if load == 1
     vk_real = readNPY('../../data/vk_real.npy');
     vk_imag = readNPY('../../data/vk_imag.npy');
     vk = vk_real + 1j*vk_imag;
-    d_real = readNPY('../../data/vk_real.npy');
-    d_imag = readNPY('../../data/vk_imag.npy');
+    d_real = readNPY('../../data/d_real.npy');
+    d_imag = readNPY('../../data/d_imag.npy');
     d = d_real + 1j*d_imag;
 else
     writeNPY(real(vk),'../../data/vk_real.npy')
     writeNPY(imag(vk),'../../data/vk_imag.npy')
-    writeNPY(real(d),'../../data/vk_real.npy')
-    writeNPY(imag(d),'../../data/vk_imag.npy')
+    writeNPY(real(d),'../../data/d_real.npy')
+    writeNPY(imag(d),'../../data/d_imag.npy')
 end
 
 figure;
@@ -135,7 +135,6 @@ et = zeros(Nd,1);
 for n = 1:Nd
     nb = (n-1) * Ns + (Nplus-1) * Ns;
     xn = v(:, nb + ceil(Ns/FS/2) : Ns/FS : nb + Ns);
-    [nb+ceil(Ns/FS/2), nb+Ns]
     for k = 1:K
         xn(k,:) = xn(k,:)*exp(-1i*f(n,k));
     end
