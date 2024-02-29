@@ -161,22 +161,14 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,uf):
     for i in range(len(r_multi[0,:])):
         r = np.squeeze(r_multi[:, i])
         vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
-        v_xcorr = np.copy(vr)
-        #v = np.convolve(v, rc_rx, "full")
-        if i == 0:
-            xcorr_for_peaks = np.abs(sg.fftconvolve(v_xcorr, sg.resample_poly(d[::-1].conj(),uf,1))) # correalte and sync at sample rate sg.decimate(v, int(ns)),
-            xcorr_for_peaks /= xcorr_for_peaks.max()
-            time_axis_xcorr = np.arange(0, len(xcorr_for_peaks)) / R * 1e3  # ms
-            peaks_rx, _ = sg.find_peaks(
-                xcorr_for_peaks, height=0.2, distance=len(d) - 100
-            )
-    v = sg.resample_poly(vr,1,Fs/fs)
+        v = sg.resample_poly(vr,1,Fs/fs)
     
     # now beamforming and weights
     r = r_multi #[:,:M]
     M = int(len(r[0,:]))
     r_fft = np.fft.fft(r, axis=0)
     freqs = np.fft.fftfreq(len(r[:, 0]), 1/fs)
+    freqs = freqs * Fs/fs
 
     index = np.where((freqs >= fc-R/2) & (freqs < fc+R/2))[0]
     N = len(index) #uhh???
@@ -229,9 +221,11 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,uf):
 
 def transmit_dl(v_dl,wk,snr,n_rx,el_spacing,R,fc,fs):
     vs = sg.resample_poly(v_dl,Fs,fs)
-    s_dl = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
+    s_dls = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
     # apply wk here
-    s_dl = np.dot(np.reshape(wk,[-1,1]),np.reshape(s_dl,[1,-1]))
+    #s_dl = wk * s_dl
+    #s_dl = np.tile(s_dl,(n_rx,1))
+    s_dl = np.dot(np.reshape(wk,[-1,1]),np.reshape(s_dls,[1,-1]))
     reflection_list = np.asarray([1,0.5]) # reflection gains 
     x_rx_list = np.array([5,-5]) 
     y_rx_list = np.array([20,20])
@@ -240,7 +234,7 @@ def transmit_dl(v_dl,wk,snr,n_rx,el_spacing,R,fc,fs):
     x_tx = np.arange(0, el_spacing*n_rx, el_spacing)
     y_tx = np.zeros_like(x_tx)
     rng = np.random.RandomState(2021)
-    r_single = rng.randn(duration * fs) / snr
+    r_single = rng.randn(int(duration * fs)) / snr
     r_single = r_single.astype('complex')
     for i in range(len(reflection_list)):
         x_rx, y_rx = x_rx_list[i], y_rx_list[i]
@@ -250,7 +244,7 @@ def transmit_dl(v_dl,wk,snr,n_rx,el_spacing,R,fc,fs):
         delta_tau = d_rx_tx / c
         delay = np.round(delta_tau * fs).astype(int) # sample delay
         for j, delay_j in enumerate(delay):
-            r_single[delay_j:delay_j+len(s)] += reflection * s_dl[j,:]
+            r_single[delay_j:delay_j+len(s_dl[0,:])] += reflection * s_dl[j,:]
         r = np.squeeze(r_single)
         vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
         v_single = sg.resample_poly(vr,1,Fs/fs)
@@ -388,9 +382,11 @@ if __name__ == "__main__":
     snr_db = np.array([5, 8, 12, 15])
     mse = np.zeros_like(snr_db)
     mse_dl = np.zeros_like(snr_db)
+    d_hat_cum = np.zeros((len(snr_db),Nd), dtype=complex)
+    d_hat_dl_cum = np.zeros_like(d_hat_cum,dtype=complex)
 
     load = False
-    downlink = False
+    downlink = True
 
     K0 = 10
     Ns = 7
@@ -471,24 +467,32 @@ if __name__ == "__main__":
         M = np.rint(Tmp/T) # just creates the n_fb value
         M = int(M)
         d_hat, mse_out = dfe_matlab(vk, d, Ns, Nd, M)
-
+        
+        d_hat_cum[ind,:] = d_hat
         mse[ind] = mse_out
 
         if downlink:
-            v_single = transmit_dl(v_dl,wk,snr,n_rx,el_spacing,R,fc,fs)
-            v_single = v_single.reshape(1,-1)
+            v_single = transmit_dl(v_dl,wk,snr+5,n_rx,el_spacing,R,fc,fs)
+            vps = v_single[:len(up)+Nz*Ns]
+            delvals,_ = fdel(vps,up)
+            vp1s = vps[delval:delval+len(up)]
+            fdes,_,_ = fdop(vp1s,up,fs,12)
+            v_single = v_single*np.exp(-1j*2*np.pi*np.arange(len(v_single))*fde*Ts)
+            v_single = sg.resample_poly(v_single,np.rint(10**4),np.rint((1/(1+fdes/fc))*(10**4)))
+            
+            v_single = v_single[delvals:delvals+len(u)]
+            v_single = v_single[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
+            v_single = sg.resample_poly(v_single,2,Ns)
+            v_single = np.concatenate((v_single,np.zeros(Nplus*2))) # should occur after
+            v_single = v_single.reshape(1,-1) 
             d_hat_dl, mse_out_dl = dfe_matlab(v_single, d, Ns, Nd, M)
-            mse_dl[ind] = mse_out_dl 
+            mse_dl[ind] = mse_out_dl
+            d_hat_dl_cum[ind,:] = d_hat_dl
 
+    for ind in range(len(snr_db)):
         # plot const
         plt.subplot(2, 2, int(ind+1))
-        plt.scatter(np.real(d_hat), np.imag(d_hat), marker='x')
-        plt.axis('square')
-        plt.axis([-2, 2, -2, 2])
-        plt.title(f'SNR={snr_db[ind]} dB') #(f'd0={d_lambda[ind]}'r'$\lambda$')
-
-        plt.subplot(2, 2, int(ind+1))
-        plt.scatter(np.real(d_hat_dl), np.imag(d_hat_dl), marker='x')
+        plt.scatter(np.real(d_hat_cum[ind,:]), np.imag(d_hat_cum[ind,:]), marker='x')
         plt.axis('square')
         plt.axis([-2, 2, -2, 2])
         plt.title(f'SNR={snr_db[ind]} dB') #(f'd0={d_lambda[ind]}'r'$\lambda$')
@@ -499,11 +503,19 @@ if __name__ == "__main__":
     ax.set_ylabel('MSE (dB)')
     ax.set_title('MSE vs SNR for QPSK Signal UL')
 
-    fig, ax = plt.subplots()
-    ax.plot(snr_db,mse_dl,'o')
-    ax.set_xlabel(r'SNR (dB)')
-    ax.set_ylabel('MSE (dB)')
-    ax.set_title('MSE vs SNR for QPSK Signal DL')
+    if downlink:
+        fig1, ax1 = plt.subplots()
+        ax1.plot(snr_db,mse_dl,'o')
+        ax1.set_xlabel(r'SNR (dB)')
+        ax1.set_ylabel('MSE (dB)')
+        ax1.set_title('MSE vs SNR for QPSK Signal DL')
+        
+        for ind in range(len(snr_db)):
+            plt.subplot(2, 2, int(ind+1))
+            plt.scatter(np.real(d_hat_dl_cum[ind,:]), np.imag(d_hat_dl_cum[ind,:]), marker='x')
+            plt.axis('square')
+            plt.axis([-2, 2, -2, 2])
+            plt.title(f'SNR={snr_db[ind]} dB') #(f'd0={d_lambda[ind]}'r'$\lambda$')
 
     plt.show()
     print(mse)
