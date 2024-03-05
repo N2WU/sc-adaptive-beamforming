@@ -2,7 +2,7 @@ import numpy as np
 import sounddevice as sd   
 
 fs = 96000
-duration = 5
+duration = 1
 channels = 8
 
 output_channels = range(3)
@@ -19,4 +19,8 @@ tx = np.zeros((len(t), channels))
 for ch in output_channels:
     tx[:, ch] = y
 
-rx = np.squeeze(sd.playrec(tx * 0.1, blocking=True))
+print(np.shape(tx))
+
+rx = np.squeeze(sd.playrec(tx * 0.01, blocking=True))
+
+print(np.shape(rx))

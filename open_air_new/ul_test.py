@@ -54,22 +54,27 @@ def pwr(x):
     p = np.sum(np.abs(x)**2)/len(x)
     return p
 
-def testbed(tx,rx_channels,fs):
+def testbed(tx,rx_channels,Fs):
+    fs = Fs
 
     sd.default.device = "ASIO MADIface USB"
     sd.default.channels = rx_channels
     sd.default.samplerate = fs
 
+    print("Transmitting...")
     rx = np.squeeze(sd.playrec(tx * 0.01, samplerate=fs, channels=rx_channels, blocking=True))
+    print("Received")
     return rx
 
 def uplink(v,Fs,fs,fc,n_rx):
     vs = sg.resample_poly(v,Fs,fs)
     s = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
-    s_tx = np.copy(s) # this can't work for multiuser
     r_multi = np.zeros((len(s),n_rx))
+    s_tx = np.zeros_like(r_multi) # this can't work for multiuser
 
-    r_multi = testbed(s_tx,n_rx,fs) # s-by-nrx
+    s_tx[:,0] = np.copy(s)
+
+    r_multi = testbed(s_tx,n_rx,Fs) # s-by-nrx
 
     for i in range(len(r_multi[0,:])):
         r = np.squeeze(r_multi[:, i])
@@ -77,6 +82,15 @@ def uplink(v,Fs,fs,fc,n_rx):
         v = sg.resample_poly(vr,1,Fs/fs)
     
     return v
+
+def dec4psk(x):
+    xr = np.real(x)
+    xi = np.imag(x)
+    dr = np.sign(xr)
+    di = np.sign(xi)
+    d = dr+1j*di
+    d = d/np.sqrt(2)
+    return d
 
 def dfe_matlab(vk, d, Ns, Nd, M): 
     K = len(vk[:,0]) # maximum
@@ -172,7 +186,7 @@ if __name__ == "__main__":
     
     dp = np.array([1, -1, 1, -1, 1, 1, -1, -1, 1, 1, 1, 1, 1])*(1+1j)/np.sqrt(2)
     fc = 17e3
-    Fs = 44100
+    Fs = 96000
     fs = Fs/4
     Ts = 1/fs
     alpha = 0.25
@@ -255,10 +269,11 @@ if __name__ == "__main__":
     M = np.rint(Tmp/T) # just creates the n_fb value
     M = int(M)
     d_hat, mse_out = dfe_matlab(vk, d, Ns, Nd, M)
-        
+
+    #wait a sec... matplotlib won't work
+    #plt.scatter(np.real(d_hat), np.imag(d_hat), marker='x')
+    #plt.axis('square')
+    #plt.axis([-2, 2, -2, 2])
+    #plt.show()
+
     print(mse_out)
-    plt.plot()
-    plt.scatter(np.real(d_hat), np.imag(d_hat), marker='x')
-    plt.axis('square')
-    plt.axis([-2, 2, -2, 2])
-    plt.title(f'Uplink QPSK Constellation')
