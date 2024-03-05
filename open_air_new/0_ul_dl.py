@@ -62,14 +62,14 @@ def testbed(tx,rx_channels):
     fs = 96000
     channels = rx_channels
 
-    output_channels = len(tx[0,:])
-    input_channels = range(channels)
+    #output_channels = len(tx[0,:])
+    #input_channels = range(channels)
 
     sd.default.device = "ASIO MADIface USB"
     sd.default.channels = channels
     sd.default.samplerate = fs
 
-    rx = np.squeeze(sd.playrec(tx * 0.01, blocking=True))
+    rx = np.squeeze(sd.playrec(tx * 0.01, samplerate=fs, channels=channels, blocking=True))
     return rx
 
 def uplink(v,snr,Fs,fs,fc,n_rx):
@@ -311,7 +311,7 @@ if __name__ == "__main__":
             v /= np.sqrt(pwr(v))
             v_dl = np.copy(v)
 
-            v, wk = (v,snr,Fs,fs,fc,n_rx) # this already does rough phase alignment
+            v, wk = uplink(v,snr,Fs,fs,fc,n_rx) # this already does rough phase alignment
             vp = v[:len(up)+Nz*Ns]
             delval,_ = fdel(vp,up)
             vp1 = vp[delval:delval+len(up)]
