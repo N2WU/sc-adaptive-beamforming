@@ -55,16 +55,32 @@ def pwr(x):
     p = np.sum(np.abs(x)**2)/len(x)
     return p
 
-def testbed(tx,rx_channels,Fs):
-    fs = Fs
-
+def testbed(s_tx,n_tx,n_rx,Fs):
+    # testbed constants
     sd.default.device = "ASIO MADIface USB"
-    sd.default.channels = rx_channels
-    sd.default.samplerate = fs
+    sd.default.channels = 20 
+    sd.default.samplerate = Fs
 
-    print("Transmitting...")
-    rx = np.squeeze(sd.playrec(tx * 0.01, samplerate=fs, channels=rx_channels, blocking=True))
-    print("Received")
+    # devices [0-15] are for array
+    # devices [16-20] are for users
+    tx = np.zeros(len(s_tx),sd.default.channels)
+    rx = np.zeros_like(tx)
+    if n_tx < n_rx:
+        # implies uplink
+        for ch in range(16,16+n_tx):
+            tx[:,ch] = s_tx
+        print("Transmitting...")
+        rx_raw = np.squeeze(sd.playrec(tx * 0.01, samplerate=Fs, blocking=True))
+        rx = rx_raw[:,n_rx]
+        print("Received")
+    else:
+        # downlink, meaning s_tx is already weighted array
+        for ch in range(n_tx):
+            tx[:,ch] = s_tx[:,ch]
+        print("Transmitting...")
+        rx_raw = np.squeeze(sd.playrec(tx * 0.01, samplerate=fs, blocking=True))
+        rx = rx_raw[:,16:16+n_tx] #testbed specific
+        print("Received")
     return rx
 
 def downlink(v_dl,angle_deg,Fs,fs,fc,n_rx,n_tx):
@@ -76,7 +92,7 @@ def downlink(v_dl,angle_deg,Fs,fs,fc,n_rx,n_tx):
     steering_vec = np.exp(-1j*2*np.pi*np.sin(np.deg2rad(angle_deg))*np.arange(n_tx)*0.05) #5cm spacing
     s_tx = np.dot(np.reshape(steering_vec,[-1,1]),np.reshape(s,[1,-1]))
 
-    r = testbed(s_tx,n_rx,Fs) # s-by-nrx
+    r = testbed(s_tx,n_tx,n_rx,Fs) # s-by-nrx
 
     r = np.squeeze(r)
     vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
