@@ -120,7 +120,82 @@ def uplink(v,Fs,fs,fc,n_rx):
             v_multichannel = np.vstack((v_multichannel,v))
             lenvm = len(v_multichannel[0,:])
     
-    return v_multichannel
+    # determine wk
+    el_spacing = 0.05   # 5cm, array const
+    c = 343             # open air
+    n_path = 2          # rough
+    r = r_multi #[:,:M]
+    M = int(len(r[0,:]))
+    r_fft = np.fft.fft(r, axis=0)
+    freqs = np.fft.fftfreq(len(r[:, 0]), 1/fs)
+    freqs = freqs * Fs/fs
+
+    index = np.where((freqs >= fc-R/2) & (freqs < fc+R/2))[0]
+    N = len(index) #uhh???
+    fk = freqs[index]       
+    yk = r_fft[index, :]    # N*M
+    theta_start = -45
+    theta_end = 45
+    N_theta = 200
+    S_theta = np.zeros((N_theta,))
+    S_theta3D = np.zeros((N_theta, N))
+    theta_start = np.deg2rad(theta_start)
+    theta_end = np.deg2rad(theta_end)
+    theta_list = np.linspace(theta_start, theta_end, N_theta)
+    for n_theta, theta in enumerate(theta_list):
+        d_tau = np.sin(theta) * el_spacing/c
+        # for k in range(N):
+        #     S_M = np.exp(-2j * np.pi * fk[k] * d_tau * np.arange(M).reshape(M,1))
+        #     S_theta[n_theta] += np.abs(np.vdot(S_M.T, yk[k, :].T))**2
+        S_M = np.exp(-2j * np.pi * d_tau * np.dot(fk.reshape(N, 1), np.arange(M).reshape(1, M)))    # N*M
+        SMxYk = np.einsum('ij,ji->i', S_M.conj(), yk.T)
+        S_theta[n_theta] = np.real(np.vdot(SMxYk, SMxYk))
+        S_theta3D[n_theta, :] = np.abs(SMxYk)**2
+
+    # n_path = 1 # number of path
+    S_theta_peaks_idx, _ = sg.find_peaks(S_theta, height=0)
+    S_theta_peaks = S_theta[S_theta_peaks_idx]
+    theta_m_idx = np.argsort(S_theta_peaks)
+    theta_m = theta_list[S_theta_peaks_idx[theta_m_idx[-n_path:]]]
+    # print(theta_m/np.pi*180)
+
+    y_tilde = np.zeros((N,n_path), dtype=complex)
+    for k in range(N):
+        d_tau_m = np.sin(theta_m) * el_spacing/c
+        try:
+            d_tau_new = d_tau_m.reshape(1, n_path)
+        except:
+            d_tau_new = np.append(d_tau_m, [0])
+            d_tau_new = d_tau_new.reshape(1, n_path)
+        Sk = np.exp(-2j * np.pi * fk[k] * np.arange(M).reshape(M, 1) @ d_tau_new)
+        for i in range(n_path):
+            e_pu = np.zeros((n_path,1))
+            e_pu[i, 0] = 1
+            wk = Sk @ np.linalg.inv(Sk.conj().T @ Sk) @ e_pu
+            y_tilde[k, i] = wk.conj().T @ yk[k, :].T
+
+    y_fft = np.zeros((len(r[:, 0]), n_path), complex)
+    y_fft[index, :] = y_tilde
+    y = np.fft.ifft(y_fft, axis=0)
+    return v_multichannel, wk
+
+def downlink(v_dl,wk,Fs,fs,fc,n_rx,n_tx):
+    vs = sg.resample_poly(v_dl,Fs,fs)
+    s = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
+    r = np.zeros(len(s))
+    # slightly confused
+    # generate angle steering vec and apply
+    # steering_vec = np.exp(-1j*2*np.pi*np.sin(np.deg2rad(angle_deg))*np.arange(n_tx)*0.05) #5cm spacing
+    steering_vec = wk
+    s_tx = np.dot(np.reshape(steering_vec,[-1,1]),np.reshape(s,[1,-1]))
+
+    r = testbed(s_tx.T,n_tx,n_rx,Fs) # s-by-nrx
+
+    r = np.squeeze(r)
+    vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
+    v = sg.resample_poly(vr,1,Fs/fs)
+    
+    return v
 
 def dec4psk(x):
     xr = np.real(x)
@@ -267,16 +342,38 @@ if __name__ == "__main__":
             v = np.append(v,np.zeros(-lendiff))
         v = v+vp
     v /= np.sqrt(pwr(v))
+    v_dl = np.copy(v)
 
-    vk = uplink(v,Fs,fs,fc,n_rx)
-
-    np.save('data/vk_ul_real.npy', np.real(vk))
-    np.save('data/vk_ul_imag.npy', np.imag(vk))
-    np.save('data/d__ul_real.npy', np.real(d))
-    np.save('data/d_ul_imag.npy', np.imag(d))
+    vk, wk = uplink(v,Fs,fs,fc,n_rx)
 
     M = np.rint(Tmp/T) # just creates the n_fb value
     M = int(M)
-    d_hat, mse_out = dfe_matlab(vk, d, Ns, Nd, M)
+    d_hat_ul, mse_ul = dfe_matlab(vk, d, Ns, Nd, M)
 
-    print(mse_out)
+    v_single = downlink(v_dl,wk,Fs,fs,fc,n_rx,n_tx)
+    vps = v_single[:len(up)+Nz*Ns]
+    delvals,_ = fdel(vps,up)
+    vp1s = vps[delvals:delvals+len(up)]
+    fdes,_,_ = fdop(vp1s,up,fs,12)
+    v_single = v_single*np.exp(-1j*2*np.pi*np.arange(len(v_single))*fdes*Ts)
+    v_single = sg.resample_poly(v_single,np.rint(10**4),np.rint((1/(1+fdes/fc))*(10**4)))
+    
+    v_single = v_single[delvals:delvals+len(u)]
+    v_single = v_single[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
+    v_single = sg.resample_poly(v_single,2,Ns)
+    v_single = np.concatenate((v_single,np.zeros(Nplus*2))) # should occur after
+    vk = v_single.reshape(1,-1) 
+
+    M = np.rint(Tmp/T) # just creates the n_fb value
+    M = int(M)
+
+    d_hat_dl, mse_dl = dfe_matlab(vk, d, Ns, Nd, M)
+
+    # save d_hat
+    np.save('data/dhat_ul_real.npy', np.real(d_hat_ul))
+    np.save('data/dhat_ul_imag.npy', np.imag(d_hat_ul))
+    np.save('data/dhat_dl_real.npy', np.real(d_hat_dl))
+    np.save('data/dhat_dl_imag.npy', np.imag(d_hat_dl))
+
+    print("Uplink MSE: ", mse_ul)
+    print("Downlink MSE: ", mse_dl) 

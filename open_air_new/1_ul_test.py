@@ -272,7 +272,7 @@ if __name__ == "__main__":
 
     np.save('data/vk_ul_real.npy', np.real(vk))
     np.save('data/vk_ul_imag.npy', np.imag(vk))
-    np.save('data/d__ul_real.npy', np.real(d))
+    np.save('data/d_ul_real.npy', np.real(d))
     np.save('data/d_ul_imag.npy', np.imag(d))
 
     M = np.rint(Tmp/T) # just creates the n_fb value
