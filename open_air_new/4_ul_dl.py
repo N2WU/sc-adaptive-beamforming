@@ -79,13 +79,13 @@ def testbed(s_tx,n_tx,n_rx,Fs):
         print("Received")
     return rx
 
-def uplink(v,Fs,fs,fc,n_rx):
+def uplink(v,Fs,fs,fc,n_user,n_array,up,Nz,Ns,Nplus,lenu,trunc):
     vs = sg.resample_poly(v,Fs,fs)
     s = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
     s_tx = np.copy(s)
     s_tx = s_tx.reshape(-1,1) 
 
-    r_multi = testbed(s_tx,1,n_rx,Fs) # s-by-nrx
+    r_multi = testbed(5*s_tx,n_user,n_array,Fs) # s-by-narray
 
     for i in range(len(r_multi[0,:])):
         r = np.squeeze(r_multi[:, i])
@@ -99,7 +99,8 @@ def uplink(v,Fs,fs,fc,n_rx):
         if lendiff > 0:
             vp1 = np.append(vp1, np.zeros(lendiff))
         fde,_,_ = fdop(vp1,up,fs,12)
-        fde = 0 # forced
+        if fde == -fs/2:
+            fde = 0 # forced
         v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
         v = sg.resample_poly(v,np.rint(10**4),np.rint((1/(1+fde/fc))*(10**4)))
         
@@ -180,7 +181,7 @@ def uplink(v,Fs,fs,fc,n_rx):
     y = np.fft.ifft(y_fft, axis=0)
     return v_multichannel, wk
 
-def downlink(v_dl,wk,Fs,fs,fc,n_rx,n_tx):
+def downlink(v_dl,wk,Fs,fs,fc,n_array,n_user,up,Nz,Ns,Nplus,lenu,trunc):
     vs = sg.resample_poly(v_dl,Fs,fs)
     s = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
     r = np.zeros(len(s))
@@ -190,7 +191,7 @@ def downlink(v_dl,wk,Fs,fs,fc,n_rx,n_tx):
     steering_vec = wk
     s_tx = np.dot(np.reshape(steering_vec,[-1,1]),np.reshape(s,[1,-1]))
 
-    r = testbed(s_tx.T,n_tx,n_rx,Fs) # s-by-nrx
+    r = testbed(5*s_tx.T,n_array,n_user,Fs) # s-by-nrx
 
     r = np.squeeze(r)
     vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
@@ -198,13 +199,16 @@ def downlink(v_dl,wk,Fs,fs,fc,n_rx,n_tx):
 
     vps = v_single[:len(up)+Nz*Ns]
     delvals,_ = fdel(vps,up)
+    adj_len = delvals+len(up)
+    if adj_len < len(vps):
+        delvals = 0
     vp1s = vps[delvals:delvals+len(up)]
     fdes,_,_ = fdop(vp1s,up,fs,12)
-    fdes = 0 #forced
+    if fdes == -fs/2:
+            fdes = 0 # forced
     v_single = v_single*np.exp(-1j*2*np.pi*np.arange(len(v_single))*fdes*Ts)
     v_single = sg.resample_poly(v_single,np.rint(10**4),np.rint((1/(1+fdes/fc))*(10**4)))
     
-    v_single = v_single[delvals:delvals+len(u)]
     v_single = v_single[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
     v_single = sg.resample_poly(v_single,2,Ns)
     v_single = np.concatenate((v_single,np.zeros(Nplus*2))) # should occur after
@@ -306,8 +310,8 @@ def dfe_matlab(vk, d, Ns, Nd, M):
     return d_hat[Nt : -1], mse, #n_err, n_training
 
 if __name__ == "__main__":
-    n_tx = 1
-    n_rx = 8
+    n_user = 1
+    n_array = 8
     # generate an s-by-n_tx signal
     Nd = 3000
     Nz = 100
@@ -337,7 +341,7 @@ if __name__ == "__main__":
     u = np.concatenate((up, np.zeros(Nz*Ns), ud))
     us = sg.resample_poly(u,Fs,fs)
     
-    K0 = n_rx
+    K0 = n_array
     Ns = 7
     Nplus = 4
 
@@ -359,13 +363,13 @@ if __name__ == "__main__":
     v /= np.sqrt(pwr(v))
     v_dl = np.copy(v)
 
-    vk, wk = uplink(v,Fs,fs,fc,n_rx)
+    vk, wk = uplink(v,Fs,fs,fc,n_user,n_array,up,Nz,Ns,Nplus,lenu,trunc)
 
     M = np.rint(Tmp/T) # just creates the n_fb value
     M = int(M)
     d_hat_ul, mse_ul = dfe_matlab(vk, d, Ns, Nd, M)
 
-    vk = downlink(v_dl,wk,Fs,fs,fc,n_rx,n_tx)
+    vk = downlink(v_dl,wk,Fs,fs,fc,n_array,n_user,up,Nz,Ns,Nplus,lenu,trunc)
 
     M = np.rint(Tmp/T) # just creates the n_fb value
     M = int(M)
