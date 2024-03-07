@@ -341,7 +341,7 @@ def dfe_matlab(vk, d, Ns, Nd, M):
         )
         if np.isnan(mse):
             mse = 100
-        return d_hat, mse, #n_err, n_training
+        return d_hat[Nt : -1], mse, #n_err, n_training
 
 if __name__ == "__main__":
     Nd = 3000
@@ -382,7 +382,7 @@ if __name__ == "__main__":
     snr_db = np.array([5, 8, 12, 15])
     mse = np.zeros_like(snr_db)
     mse_dl = np.zeros_like(snr_db)
-    d_hat_cum = np.zeros((len(snr_db),Nd), dtype=complex)
+    d_hat_cum = np.zeros((len(snr_db),Nd-300-1), dtype=complex) # has to change if Nt changes :(
     d_hat_dl_cum = np.zeros_like(d_hat_cum,dtype=complex)
 
     load = False
