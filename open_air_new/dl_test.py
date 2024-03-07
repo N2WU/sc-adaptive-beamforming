@@ -63,7 +63,7 @@ def testbed(s_tx,n_tx,n_rx,Fs):
 
     # devices [0-15] are for array
     # devices [16-20] are for users
-    tx = np.zeros(len(s_tx),sd.default.channels)
+    tx = np.zeros(len(s_tx[:,0]),sd.default.channels)
     rx = np.zeros_like(tx)
     if n_tx < n_rx:
         # implies uplink
