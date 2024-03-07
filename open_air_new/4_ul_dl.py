@@ -200,8 +200,8 @@ def downlink(v_dl,wk,Fs,fs,fc,n_array,n_user): #,up,Nz,Ns,Nplus,lenu,trunc):
     vps = v_single[:len(up)+Nz*Ns]
     delvals,_ = fdel(vps,up)
     adj_len = delvals+len(up)
-    if adj_len < len(vps):
-        delvals = 0
+    if adj_len > len(vps): 
+        delvals = 0 # don't adjust with xcorr if it would otherwise ruin signal
     vp1s = vps[delvals:delvals+len(up)]
     fdes,_,_ = fdop(vp1s,up,fs,12)
     if fdes == -fs/2:
@@ -363,13 +363,13 @@ if __name__ == "__main__":
     v /= np.sqrt(pwr(v))
     v_dl = np.copy(v)
 
-    vk, wk = uplink(v,Fs,fs,fc,n_user,n_array,up,Nz,Ns,Nplus,lenu,trunc)
+    vk, wk = uplink(v,Fs,fs,fc,n_user,n_array) #,up,Nz,Ns,Nplus,lenu,trunc)
 
     M = np.rint(Tmp/T) # just creates the n_fb value
     M = int(M)
     d_hat_ul, mse_ul = dfe_matlab(vk, d, Ns, Nd, M)
 
-    vk = downlink(v_dl,wk,Fs,fs,fc,n_array,n_user,up,Nz,Ns,Nplus,lenu,trunc)
+    vk = downlink(v_dl,wk,Fs,fs,fc,n_array,n_user) #,up,Nz,Ns,Nplus,lenu,trunc)
 
     M = np.rint(Tmp/T) # just creates the n_fb value
     M = int(M)
