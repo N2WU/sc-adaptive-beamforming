@@ -79,7 +79,7 @@ def testbed(s_tx,n_tx,n_rx,Fs):
         print("Received")
     return rx
 
-def uplink(v,Fs,fs,fc,n_user,n_array,up,Nz,Ns,Nplus,lenu,trunc):
+def uplink(v,Fs,fs,fc,n_user,n_array): #,up,Nz,Ns,Nplus,lenu,trunc):
     vs = sg.resample_poly(v,Fs,fs)
     s = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
     s_tx = np.copy(s)
@@ -181,7 +181,7 @@ def uplink(v,Fs,fs,fc,n_user,n_array,up,Nz,Ns,Nplus,lenu,trunc):
     y = np.fft.ifft(y_fft, axis=0)
     return v_multichannel, wk
 
-def downlink(v_dl,wk,Fs,fs,fc,n_array,n_user,up,Nz,Ns,Nplus,lenu,trunc):
+def downlink(v_dl,wk,Fs,fs,fc,n_array,n_user): #,up,Nz,Ns,Nplus,lenu,trunc):
     vs = sg.resample_poly(v_dl,Fs,fs)
     s = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
     r = np.zeros(len(s))
