@@ -199,7 +199,7 @@ def dfe_matlab(vk, d, Ns, Nd, M):
     )
     if np.isnan(mse):
         mse = 100
-    return d_hat, mse, #n_err, n_training
+    return d_hat[Nt : -1], mse, #n_err, n_training
 
 if __name__ == "__main__":
     n_tx = 1
