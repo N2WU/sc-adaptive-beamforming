@@ -99,6 +99,7 @@ def uplink(v,Fs,fs,fc,n_rx):
         if lendiff > 0:
             vp1 = np.append(vp1, np.zeros(lendiff))
         fde,_,_ = fdop(vp1,up,fs,12)
+        fde = 0 # forced
         v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
         v = sg.resample_poly(v,np.rint(10**4),np.rint((1/(1+fde/fc))*(10**4)))
         
@@ -193,9 +194,23 @@ def downlink(v_dl,wk,Fs,fs,fc,n_rx,n_tx):
 
     r = np.squeeze(r)
     vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
-    v = sg.resample_poly(vr,1,Fs/fs)
+    v_single = sg.resample_poly(vr,1,Fs/fs)
+
+    vps = v_single[:len(up)+Nz*Ns]
+    delvals,_ = fdel(vps,up)
+    vp1s = vps[delvals:delvals+len(up)]
+    fdes,_,_ = fdop(vp1s,up,fs,12)
+    fdes = 0 #forced
+    v_single = v_single*np.exp(-1j*2*np.pi*np.arange(len(v_single))*fdes*Ts)
+    v_single = sg.resample_poly(v_single,np.rint(10**4),np.rint((1/(1+fdes/fc))*(10**4)))
     
-    return v
+    v_single = v_single[delvals:delvals+len(u)]
+    v_single = v_single[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
+    v_single = sg.resample_poly(v_single,2,Ns)
+    v_single = np.concatenate((v_single,np.zeros(Nplus*2))) # should occur after
+    vk = v_single.reshape(1,-1) 
+    
+    return vk
 
 def dec4psk(x):
     xr = np.real(x)
@@ -350,19 +365,7 @@ if __name__ == "__main__":
     M = int(M)
     d_hat_ul, mse_ul = dfe_matlab(vk, d, Ns, Nd, M)
 
-    v_single = downlink(v_dl,wk,Fs,fs,fc,n_rx,n_tx)
-    vps = v_single[:len(up)+Nz*Ns]
-    delvals,_ = fdel(vps,up)
-    vp1s = vps[delvals:delvals+len(up)]
-    fdes,_,_ = fdop(vp1s,up,fs,12)
-    v_single = v_single*np.exp(-1j*2*np.pi*np.arange(len(v_single))*fdes*Ts)
-    v_single = sg.resample_poly(v_single,np.rint(10**4),np.rint((1/(1+fdes/fc))*(10**4)))
-    
-    v_single = v_single[delvals:delvals+len(u)]
-    v_single = v_single[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
-    v_single = sg.resample_poly(v_single,2,Ns)
-    v_single = np.concatenate((v_single,np.zeros(Nplus*2))) # should occur after
-    vk = v_single.reshape(1,-1) 
+    vk = downlink(v_dl,wk,Fs,fs,fc,n_rx,n_tx)
 
     M = np.rint(Tmp/T) # just creates the n_fb value
     M = int(M)
