@@ -78,7 +78,7 @@ def testbed(s_tx,n_tx,n_rx,Fs):
         for ch in range(n_tx):
             tx[:,ch] = s_tx[:,ch]
         print("Transmitting...")
-        rx_raw = sd.playrec(tx * 0.01, samplerate=Fs, blocking=True)
+        rx_raw = sd.playrec(tx * 0.05, samplerate=Fs, blocking=True)
         rx = rx_raw[:,16:16+n_rx] #testbed specific
         print("Received")
     return rx
@@ -202,7 +202,7 @@ if __name__ == "__main__":
     # init bits (training bits are a select repition of bits)
     
     dp = np.array([1, -1, 1, -1, 1, 1, -1, -1, 1, 1, 1, 1, 1])*(1+1j)/np.sqrt(2)
-    fc = 17e3
+    fc = 12e3
     Fs = 96000
     fs = Fs/4
     Ts = 1/fs

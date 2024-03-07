@@ -1,26 +1,47 @@
 import numpy as np
 import sounddevice as sd   
 
-fs = 96000
-duration = 1
-channels = 8
+def testbed(s_tx,n_tx,n_rx,Fs):
+    # testbed constants
+    sd.default.device = "ASIO MADIface USB"
+    sd.default.channels = 20 
+    sd.default.samplerate = Fs
 
-output_channels = range(3)
-input_channels = range(channels)
+    # devices [0-15] are for array
+    # devices [16-20] are for users
+    tx = np.zeros((len(s_tx[:,0]),20))
+    if n_tx < n_rx:
+        # implies uplink
+        s_tx = s_tx.flatten()
+        for ch in range(16,16+n_tx):
+            tx[:,ch] = s_tx
+        print("Transmitting...")
+        rx_raw = sd.playrec(tx * 0.05, samplerate=Fs, blocking=True)
+        rx = rx_raw[:,:n_rx]
+        print("Received")
+    else:
+        # downlink, meaning s_tx is already weighted array
+        for ch in range(n_tx):
+            tx[:,ch] = s_tx[:,ch]
+        print("Transmitting...")
+        rx_raw = sd.playrec(tx * 0.05, samplerate=Fs, blocking=True)
+        rx = rx_raw[:,16:16+n_rx] #testbed specific
+        print("Received")
+    return rx
 
-sd.default.device = "ASIO MADIface USB"
-sd.default.channels = channels
-sd.default.samplerate = fs
+if __name__ == "__main__":
+    fs = 96000
+    duration = 2
 
-t = np.linspace(0, duration, num=duration*fs)
-y = np.cos(2 * np.pi * 10000 * t)
-tx = np.zeros((len(t), channels))
+    n_tx = 12
+    n_rx = 1
 
-for ch in output_channels:
-    tx[:, ch] = y
+    t = np.linspace(0, duration, num=duration*fs)
+    y = np.cos(2 * np.pi * 5e3 * t)
 
-print(np.shape(tx))
-
-rx = np.squeeze(sd.playrec(tx * 0.01, blocking=True))
-
-print(np.shape(rx))
+    if n_tx == 1:
+        y = y.reshape(-1,1)
+    else:
+        y = np.tile(y,(n_tx,1))
+        y = y.T
+    rx = testbed(y,n_tx,n_rx,fs)
