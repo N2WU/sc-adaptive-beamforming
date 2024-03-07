@@ -245,9 +245,9 @@ def transmit_dl(v_dl,wk,snr,n_rx,el_spacing,R,fc,fs):
         delay = np.round(delta_tau * fs).astype(int) # sample delay
         for j, delay_j in enumerate(delay):
             r_single[delay_j:delay_j+len(s_dl[0,:])] += reflection * s_dl[j,:]
-        r = np.squeeze(r_single)
-        vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
-        v_single = sg.resample_poly(vr,1,Fs/fs)
+    r = np.squeeze(r_single)
+    vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
+    v_single = sg.resample_poly(vr,1,Fs/fs)
     return v_single
 
 def dec4psk(x):
