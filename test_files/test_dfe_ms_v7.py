@@ -471,13 +471,13 @@ if __name__ == "__main__":
         d_hat_cum[ind,:] = d_hat
         mse[ind] = mse_out
 
-        if downlink:
+        if downlink: # ouch
             v_single = transmit_dl(v_dl,wk,snr+5,n_rx,el_spacing,R,fc,fs)
             vps = v_single[:len(up)+Nz*Ns]
             delvals,_ = fdel(vps,up)
-            vp1s = vps[delval:delval+len(up)]
+            vp1s = vps[delvals:delvals+len(up)]
             fdes,_,_ = fdop(vp1s,up,fs,12)
-            v_single = v_single*np.exp(-1j*2*np.pi*np.arange(len(v_single))*fde*Ts)
+            v_single = v_single*np.exp(-1j*2*np.pi*np.arange(len(v_single))*fdes*Ts)
             v_single = sg.resample_poly(v_single,np.rint(10**4),np.rint((1/(1+fdes/fc))*(10**4)))
             
             v_single = v_single[delvals:delvals+len(u)]

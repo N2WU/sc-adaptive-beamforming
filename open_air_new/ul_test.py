@@ -1,9 +1,6 @@
 import numpy as np
 import scipy.signal as sg
-import matplotlib.pyplot as plt
 import sounddevice as sd
-import scipy.io as scio
-from scipy.io import wavfile
 
 def rcos(alpha, Ns, trunc):
     tn = np.arange(-trunc * Ns, trunc * Ns+1) / Ns
@@ -80,8 +77,36 @@ def uplink(v,Fs,fs,fc,n_rx):
         r = np.squeeze(r_multi[:, i])
         vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
         v = sg.resample_poly(vr,1,Fs/fs)
+
+        vp = v[:len(up)+Nz*Ns]
+        delval,_ = fdel(vp,up)
+        vp1 = vp[delval:delval+len(up)]
+        lendiff = len(up)-len(vp1)
+        if lendiff > 0:
+            vp1 = np.append(vp1, np.zeros(lendiff))
+        fde,_,_ = fdop(vp1,up,fs,12)
+        v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
+        v = sg.resample_poly(v,np.rint(10**4),np.rint((1/(1+fde/fc))*(10**4)))
+        
+        v = v[delval:delval+len(u)]
+        v = v[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
+        v = sg.resample_poly(v,2,Ns)
+        v = np.concatenate((v,np.zeros(Nplus*2)))
+        if i == 0:
+            v_multichannel = v
+            lenvm = len(v)
+        else:
+            lendiff = lenvm - len(v)
+            if lendiff > 0:
+                v = np.append(v,np.zeros(lendiff))
+            elif lendiff < 0:
+                if i == 1:
+                    v_multichannel = v_multichannel.reshape(1,-1)
+                v_multichannel = np.concatenate((v_multichannel,np.zeros((len(v_multichannel[:,0]),-lendiff))),axis=1)
+            v_multichannel = np.vstack((v_multichannel,v))
+            lenvm = len(v_multichannel[0,:])
     
-    return v
+    return v_multichannel
 
 def dec4psk(x):
     xr = np.real(x)
@@ -229,38 +254,9 @@ if __name__ == "__main__":
                 v = np.append(v,np.zeros(-lendiff))
             v = v+vp
         v /= np.sqrt(pwr(v))
-        v_dl = np.copy(v)
 
-        v = uplink(v,Fs,fs,fc,n_rx) # this already does rough phase alignment
-        vp = v[:len(up)+Nz*Ns]
-        delval,_ = fdel(vp,up)
-        vp1 = vp[delval:delval+len(up)]
-        lendiff = len(up)-len(vp1)
-        if lendiff > 0:
-            vp1 = np.append(vp1, np.zeros(lendiff))
-        fde,_,_ = fdop(vp1,up,fs,12)
-        v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
-        v = sg.resample_poly(v,np.rint(10**4),np.rint((1/(1+fde/fc))*(10**4)))
-        
-        v = v[delval:delval+len(u)]
-        v = v[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
-        v = sg.resample_poly(v,2,Ns)
-        v = np.concatenate((v,np.zeros(Nplus*2)))
-        if i == 0:
-            v_multichannel = v
-            lenvm = len(v)
-        else:
-            lendiff = lenvm - len(v)
-            if lendiff > 0:
-                v = np.append(v,np.zeros(lendiff))
-            elif lendiff < 0:
-                if i == 1:
-                    v_multichannel = v_multichannel.reshape(1,-1)
-                v_multichannel = np.concatenate((v_multichannel,np.zeros((len(v_multichannel[:,0]),-lendiff))),axis=1)
-            v_multichannel = np.vstack((v_multichannel,v))
-            lenvm = len(v_multichannel[0,:])
+        vk = uplink(v,Fs,fs,fc,n_rx)
 
-    vk = np.copy(v_multichannel)
     np.save('data/vk_ul_real.npy', np.real(vk))
     np.save('data/vk_ul_imag.npy', np.imag(vk))
     np.save('data/d__ul_real.npy', np.real(d))
@@ -269,11 +265,5 @@ if __name__ == "__main__":
     M = np.rint(Tmp/T) # just creates the n_fb value
     M = int(M)
     d_hat, mse_out = dfe_matlab(vk, d, Ns, Nd, M)
-
-    #wait a sec... matplotlib won't work
-    #plt.scatter(np.real(d_hat), np.imag(d_hat), marker='x')
-    #plt.axis('square')
-    #plt.axis([-2, 2, -2, 2])
-    #plt.show()
 
     print(mse_out)
