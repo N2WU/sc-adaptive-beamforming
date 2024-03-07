@@ -63,23 +63,23 @@ def testbed(s_tx,n_tx,n_rx,Fs):
 
     # devices [0-15] are for array
     # devices [16-20] are for users
-    tx = np.zeros(len(s_tx[:,0]),sd.default.channels)
-    rx = np.zeros_like(tx)
+    tx = np.zeros((len(s_tx[:,0]),20))
     if n_tx < n_rx:
         # implies uplink
+        s_tx = s_tx.flatten()
         for ch in range(16,16+n_tx):
             tx[:,ch] = s_tx
         print("Transmitting...")
-        rx_raw = np.squeeze(sd.playrec(tx * 0.01, samplerate=Fs, blocking=True))
-        rx = rx_raw[:,n_rx]
+        rx_raw = sd.playrec(tx * 0.05, samplerate=Fs, blocking=True)
+        rx = rx_raw[:,:n_rx]
         print("Received")
     else:
         # downlink, meaning s_tx is already weighted array
         for ch in range(n_tx):
             tx[:,ch] = s_tx[:,ch]
         print("Transmitting...")
-        rx_raw = np.squeeze(sd.playrec(tx * 0.01, samplerate=fs, blocking=True))
-        rx = rx_raw[:,16:16+n_tx] #testbed specific
+        rx_raw = sd.playrec(tx * 0.01, samplerate=Fs, blocking=True)
+        rx = rx_raw[:,16:16+n_rx] #testbed specific
         print("Received")
     return rx
 
@@ -92,7 +92,7 @@ def downlink(v_dl,angle_deg,Fs,fs,fc,n_rx,n_tx):
     steering_vec = np.exp(-1j*2*np.pi*np.sin(np.deg2rad(angle_deg))*np.arange(n_tx)*0.05) #5cm spacing
     s_tx = np.dot(np.reshape(steering_vec,[-1,1]),np.reshape(s,[1,-1]))
 
-    r = testbed(s_tx,n_tx,n_rx,Fs) # s-by-nrx
+    r = testbed(s_tx.T,n_tx,n_rx,Fs) # s-by-nrx
 
     r = np.squeeze(r)
     vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
@@ -271,3 +271,5 @@ if __name__ == "__main__":
     M = int(M)
 
     d_hat_dl, mse_out_dl = dfe_matlab(vk, d, Ns, Nd, M)
+
+    print(mse_out_dl)

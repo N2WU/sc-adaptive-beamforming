@@ -59,22 +59,22 @@ def testbed(s_tx,n_tx,n_rx,Fs):
 
     # devices [0-15] are for array
     # devices [16-20] are for users
-    tx = np.zeros(len(s_tx),sd.default.channels)
-    rx = np.zeros_like(tx)
+    tx = np.zeros((len(s_tx[:,0]),20))
     if n_tx < n_rx:
         # implies uplink
+        s_tx = s_tx.flatten()
         for ch in range(16,16+n_tx):
             tx[:,ch] = s_tx
         print("Transmitting...")
-        rx_raw = np.squeeze(sd.playrec(tx * 0.01, samplerate=Fs, blocking=True))
-        rx = rx_raw[:,n_rx]
+        rx_raw = sd.playrec(tx * 0.05, samplerate=Fs, blocking=True)
+        rx = rx_raw[:,:n_rx]
         print("Received")
     else:
         # downlink, meaning s_tx is already weighted array
         for ch in range(n_tx):
             tx[:,ch] = s_tx[:,ch]
         print("Transmitting...")
-        rx_raw = np.squeeze(sd.playrec(tx * 0.01, samplerate=fs, blocking=True))
+        rx_raw = sd.playrec(tx * 0.01, samplerate=Fs, blocking=True)
         rx = rx_raw[:,16:16+n_tx] #testbed specific
         print("Received")
     return rx
@@ -82,10 +82,8 @@ def testbed(s_tx,n_tx,n_rx,Fs):
 def uplink(v,Fs,fs,fc,n_rx):
     vs = sg.resample_poly(v,Fs,fs)
     s = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
-    r_multi = np.zeros((len(s),n_rx))
-    s_tx = np.zeros_like(r_multi) # this can't work for multiuser
-
-    s_tx[:,0] = np.copy(s)
+    s_tx = np.copy(s)
+    s_tx = s_tx.reshape(-1,1) 
 
     r_multi = testbed(s_tx,1,n_rx,Fs) # s-by-nrx
 
@@ -253,25 +251,24 @@ if __name__ == "__main__":
     Ns = 7
     Nplus = 4
 
-    for i in range(K0):
-        Tmp = 40/1000
-        tau = (3 + np.random.randint(1,33,6))/1000
-        h = np.exp(-tau/Tmp)
-        h /= np.sqrt(np.sum(np.abs(h)))
-        taus = np.rint(tau/Ts)
-        v = np.zeros(len(u) + int(np.max(taus)),dtype=complex)
-        for p in range(len(tau)):
-            taup = int(taus[p])
-            vp = np.append(np.zeros(taup),h[p]*u)
-            lendiff = len(v) - len(vp)
-            if lendiff > 0:
-                vp = np.append(vp,np.zeros(lendiff))
-            elif lendiff < 0:
-                v = np.append(v,np.zeros(-lendiff))
-            v = v+vp
-        v /= np.sqrt(pwr(v))
+    Tmp = 40/1000
+    tau = (3 + np.random.randint(1,33,6))/1000
+    h = np.exp(-tau/Tmp)
+    h /= np.sqrt(np.sum(np.abs(h)))
+    taus = np.rint(tau/Ts)
+    v = np.zeros(len(u) + int(np.max(taus)),dtype=complex)
+    for p in range(len(tau)):
+        taup = int(taus[p])
+        vp = np.append(np.zeros(taup),h[p]*u)
+        lendiff = len(v) - len(vp)
+        if lendiff > 0:
+            vp = np.append(vp,np.zeros(lendiff))
+        elif lendiff < 0:
+            v = np.append(v,np.zeros(-lendiff))
+        v = v+vp
+    v /= np.sqrt(pwr(v))
 
-        vk = uplink(v,Fs,fs,fc,n_rx)
+    vk = uplink(v,Fs,fs,fc,n_rx)
 
     np.save('data/vk_ul_real.npy', np.real(vk))
     np.save('data/vk_ul_imag.npy', np.imag(vk))
