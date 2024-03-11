@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 
 if __name__ == "__main__":   
     # load
+    """
     dhat_dl_real = np.load('data/dhat_dl_real.npy')
     dhat_dl_imag = np.load('data/dhat_dl_imag.npy')
     dhat_dl = dhat_dl_real + 1j*dhat_dl_imag
@@ -28,5 +29,37 @@ if __name__ == "__main__":
     plt.axis([-2, 2, -2, 2])
     plt.title(f'Downlink QPSK Constellation') 
     plt.show() 
+    """
+
+    data = np.load('data/d_hat_cum3_16.npy')
+    d_hat_6 = data[1,:]
+    data = np.load('data/d_hat_cum2_10.npy')
+    d_hat_10 = data[3,:]
+    data = np.load('data/d_hat_cum1_12.npy')
+    d_hat_12 = data[3,:]
+    data = np.load('data/d_hat_cum3_16.npy')
+    d_hat_16 = data[3,:]
+
+    plt.subplot(2, 2, 1)
+    plt.scatter(np.real(d_hat_6), np.imag(d_hat_6), marker='x')
+    plt.axis('square')
+    plt.axis([-2, 2, -2, 2])
+    plt.title(f'M=6')
+    plt.subplot(2, 2, 2)
+    plt.scatter(np.real(d_hat_10), np.imag(d_hat_10), marker='x')
+    plt.axis('square')
+    plt.axis([-2, 2, -2, 2])
+    plt.title(f'M=10')
+    plt.subplot(2, 2, 3)
+    plt.scatter(np.real(d_hat_12), np.imag(d_hat_12), marker='x')
+    plt.axis('square')
+    plt.axis([-2, 2, -2, 2])
+    plt.title(f'M=12')
+    plt.subplot(2, 2, 4)
+    plt.scatter(np.real(d_hat_16), np.imag(d_hat_16), marker='x')
+    plt.axis('square')
+    plt.axis([-2, 2, -2, 2])
+    plt.title(f'M=16')
+    plt.show()
 
 
