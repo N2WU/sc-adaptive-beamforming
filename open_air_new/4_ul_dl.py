@@ -318,15 +318,15 @@ if __name__ == "__main__":
     # init bits (training bits are a select repition of bits)
     
     dp = np.array([1, -1, 1, -1, 1, 1, -1, -1, 1, 1, 1, 1, 1])*(1+1j)/np.sqrt(2)
-    fc = 12e3
+    fc = 6.5e3
     Fs = 96000
-    fs = Fs/4
+    R = 3000
+    T = 1/R #Ns*Ts
+    Ns = 7
+    fs = Ns*R #Fs/4
     Ts = 1/fs
     alpha = 0.25
     trunc = 4
-    Ns = 7
-    T = Ns*Ts
-    R = 1/T
     B = R*(1+alpha)
     Nso = Ns
     uf = int(fs / R)
