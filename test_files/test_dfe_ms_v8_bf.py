@@ -81,7 +81,7 @@ def array_conditions(fc,B,n_rx,el_spacing):
     return ang_res, amb_res
 
 def transmit(v,snr,Fs,fs,fc,n_rx,d0,uf):
-    reflection_list = np.asarray([1,0]) # reflection gains
+    reflection_list = np.asarray([1,0.5]) # reflection gains
     n_path = len(reflection_list)  
     x_tx_list = np.array([5,-5]) 
     y_tx_list = np.array([20,20])
@@ -100,7 +100,8 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,uf):
         dx, dy = x_rx - x_tx, y_rx - y_tx
         d_rx_tx = np.sqrt(dx**2 + dy**2)
         delta_tau = d_rx_tx / c
-        delay = np.round(delta_tau * fs).astype(int) # sample delay
+        #delta_tau = el_spacing/c * np.sin(np.deg2rad(true_angle))
+        delay = np.round(delta_tau * Fs).astype(int) # sample delay, grrrr
         for j, delay_j in enumerate(delay):
             r_multi[delay_j:delay_j+len(s), j] += reflection * s
     peaks_rx = 0
@@ -165,8 +166,19 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,uf):
     y_fft = np.zeros((len(r[:, 0]), n_path), complex)
     y_fft[index, :] = y_tilde
     y = np.fft.ifft(y_fft, axis=0)
-    plt.plot(np.flip(deg_theta),(S_theta))
+
+    """
+    est_deg = np.argmax(S_theta)
+    deg_ax = np.flip(deg_theta)
+    print(true_angle)
+    plt.plot(deg_ax,S_theta)
+    plt.axvline(x=true_angle, linestyle="--", color="red")
+    plt.axvline(x=deg_ax[est_deg], linestyle="--", color="blue")
+    plt.text(deg_ax[est_deg], np.max(S_theta), f'Est Angle={deg_ax[est_deg]}')
+    plt.text(true_angle, np.max(S_theta)*1e-5, f'True Angle={true_angle}')
+    plt.title("S(Theta) for 10 dB, M=12, B = 3.9 kHz")
     plt.show()
+    """
     return v, wk
 
 def transmit_dl(v_dl,wk,snr,n_rx,el_spacing,R,fc,fs):
@@ -301,14 +313,14 @@ if __name__ == "__main__":
     dp = np.array([1, -1, 1, -1, 1, 1, -1, -1, 1, 1, 1, 1, 1])*(1+1j)/np.sqrt(2)
     fc = 6.5e3
     Fs = 44100
-    fs = Fs/4
+    fs = Fs #/4
     Ts = 1/fs
     alpha = 0.25
     trunc = 4
     Ns = 7
     T = Ns*Ts
     R = 1/T
-    B = R*(1+alpha)
+    B = R*(1+alpha)/2
     Nso = Ns
     uf = int(fs / R)
 
@@ -330,7 +342,7 @@ if __name__ == "__main__":
     s = np.real(us * np.exp(2j * np.pi * fc * np.arange(len(us)) / Fs))
     # s /= np.max(np.abs(s))
 
-    snr_db = np.array([20,20,20,20])# ([5, 8, 12, 15])
+    snr_db = np.array([5, 8, 12, 15])
     mse = np.zeros_like(snr_db)
     mse_dl = np.zeros_like(snr_db)
     d_hat_cum = np.zeros((len(snr_db),Nd-300-1), dtype=complex) # has to change if Nt changes :(
@@ -340,7 +352,6 @@ if __name__ == "__main__":
     downlink = False
     beamform = False
     check_conditions = True
-    theta = 76
     if check_conditions == True:
         print(array_conditions(fc,B,n_rx,el_spacing))
     K0 = n_rx
@@ -356,7 +367,6 @@ if __name__ == "__main__":
             v /= np.sqrt(pwr(v))
             if downlink:
                 v_dl = np.copy(v)
-            #v = transmit_passband(v,snr,Fs,fs,fc)
             v, wk = transmit(v,snr,Fs,fs,fc,n_rx,d0,uf) # this already does rough phase alignment
             vp = v[:len(up)+Nz*Ns]
             delval,_ = fdel(vp,up)
@@ -391,7 +401,7 @@ if __name__ == "__main__":
 
         vk = np.copy(v_multichannel)
 
-        M = int(4)
+        M = int(63)
         d_hat, mse_out = dfe_matlab(vk, d, Ns, Nd, M)
         
         d_hat_cum[ind,:] = d_hat
