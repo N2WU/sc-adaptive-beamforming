@@ -90,7 +90,7 @@ def uplink(v,Fs,fs,fc,n_user,n_array): #,up,Nz,Ns,Nplus,lenu,trunc):
     for i in range(len(r_multi[0,:])):
         r = np.squeeze(r_multi[:, i])
         vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
-        v = sg.resample_poly(vr,1,Fs/fs)
+        v = sg.resample_poly(vr,1,int(Fs/fs))
 
         vp = v[:len(up)+Nz*Ns]
         delval,_ = fdel(vp,up)
@@ -99,7 +99,7 @@ def uplink(v,Fs,fs,fc,n_user,n_array): #,up,Nz,Ns,Nplus,lenu,trunc):
         if lendiff > 0:
             vp1 = np.append(vp1, np.zeros(lendiff))
         fde,_,_ = fdop(vp1,up,fs,12)
-        if fde == -fs/2:
+        if fde <= -fs/2:
             fde = 0 # forced
         v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
         v = sg.resample_poly(v,np.rint(10**4),np.rint((1/(1+fde/fc))*(10**4)))
@@ -195,7 +195,7 @@ def downlink(v_dl,wk,Fs,fs,fc,n_array,n_user): #,up,Nz,Ns,Nplus,lenu,trunc):
 
     r = np.squeeze(r)
     vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
-    v_single = sg.resample_poly(vr,1,Fs/fs)
+    v_single = sg.resample_poly(vr,1,int(Fs/fs))
 
     vps = v_single[:len(up)+Nz*Ns]
     delvals,_ = fdel(vps,up)
@@ -320,10 +320,10 @@ if __name__ == "__main__":
     dp = np.array([1, -1, 1, -1, 1, 1, -1, -1, 1, 1, 1, 1, 1])*(1+1j)/np.sqrt(2)
     fc = 6.5e3
     Fs = 96000
-    R = 3000
+    R = int(3000)
     T = 1/R #Ns*Ts
     Ns = 7
-    fs = Ns*R #Fs/4
+    fs = int(Ns*R) #Fs/4
     Ts = 1/fs
     alpha = 0.25
     trunc = 4

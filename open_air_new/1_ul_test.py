@@ -90,7 +90,7 @@ def uplink(v,Fs,fs,fc,n_rx):
     for i in range(len(r_multi[0,:])):
         r = np.squeeze(r_multi[:, i])
         vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
-        v = sg.resample_poly(vr,1,Fs/fs)
+        v = sg.resample_poly(vr,1,int(Fs/fs))
 
         vp = v[:len(up)+Nz*Ns]
         delval,_ = fdel(vp,up)
