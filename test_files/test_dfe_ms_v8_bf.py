@@ -55,23 +55,48 @@ def pwr(x):
     p = np.sum(np.abs(x)**2)/len(x)
     return p
 
+def array_conditions(fc,B,n_rx,el_spacing):
+    c = 343
+    theta_p = 0
+    lambda_max = c/(fc - B/2)
+    lambda_min = c/(fc + B/2)
+
+    delmin = lambda_max/(el_spacing*n_rx)
+    delmax = lambda_min/el_spacing
+    theta_q_deg = np.linspace(-90,90)
+    theta_q = np.deg2rad(theta_q_deg)
+    theta_p = np.deg2rad(theta_p)
+
+    dataq = np.abs(np.sin(theta_p) - np.sin(theta_q))
+    delmindat = np.squeeze(np.where(dataq < delmin))
+    delmaxdat = np.squeeze(np.where(dataq > delmax))
+    try:
+        ang_res = (theta_q_deg[np.amax(delmindat)]-theta_q_deg[np.amin(delmindat)])/2
+    except:
+        ang_res = 0
+    try:
+        amb_res = (theta_q_deg[delmaxdat[int(len(delmaxdat)/2)]] - theta_q_deg[delmaxdat[int(len(delmaxdat)/2-1)]])/2
+    except:
+        amb_res = (theta_q_deg[-1]-theta_q_deg[0])/2
+    return ang_res, amb_res
+
 def transmit(v,snr,Fs,fs,fc,n_rx,d0,uf):
-    reflection_list = np.asarray([1,0.5]) # reflection gains
+    reflection_list = np.asarray([1,0]) # reflection gains
     n_path = len(reflection_list)  
     x_tx_list = np.array([5,-5]) 
     y_tx_list = np.array([20,20])
     c = 343
-    duration = 10 # amount of padding, basically
-    x_rx = np.arange(0, d0*n_rx, d0)
+    x_rx = d0 * np.arange(n_rx)
     y_rx = np.zeros_like(x_rx)
     rng = np.random.RandomState(2021)
     vs = sg.resample_poly(v,Fs,fs)
-    s = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
+    s = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs)) #Fs
     a = 1/350
-    r_multi = rng.randn(int(duration * fs), n_rx) / snr
+    r_multi = rng.randn(int(2*len(s)), n_rx) / snr
     for i in range(len(reflection_list)):
         x_tx, y_tx = x_tx_list[i], y_tx_list[i]
         reflection = reflection_list[i] #delay and sum not scale
+        true_angle = 90 - np.rad2deg(np.arctan(np.abs(y_tx/x_tx)))
         dx, dy = x_rx - x_tx, y_rx - y_tx
         d_rx_tx = np.sqrt(dx**2 + dy**2)
         delta_tau = d_rx_tx / c
@@ -81,9 +106,10 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,uf):
     peaks_rx = 0
     for i in range(len(r_multi[0,:])):
         r = np.squeeze(r_multi[:, i])
-        vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
+        vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs) #Fs
         v = sg.resample_poly(vr,1,Fs/fs)
-    
+        v = vr
+
     # now beamforming and weights
     r = r_multi #[:,:M]
     M = int(len(r[0,:]))
@@ -98,6 +124,7 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,uf):
     theta_start = -45
     theta_end = 45
     N_theta = 200
+    deg_theta = np.linspace(theta_start,theta_end,N_theta)
     S_theta = np.zeros((N_theta,))
     S_theta3D = np.zeros((N_theta, N))
     theta_start = np.deg2rad(theta_start)
@@ -138,6 +165,8 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,uf):
     y_fft = np.zeros((len(r[:, 0]), n_path), complex)
     y_fft[index, :] = y_tilde
     y = np.fft.ifft(y_fft, axis=0)
+    plt.plot(np.flip(deg_theta),(S_theta))
+    plt.show()
     return v, wk
 
 def transmit_dl(v_dl,wk,snr,n_rx,el_spacing,R,fc,fs):
@@ -270,7 +299,7 @@ if __name__ == "__main__":
     # init bits (training bits are a select repition of bits)
     
     dp = np.array([1, -1, 1, -1, 1, 1, -1, -1, 1, 1, 1, 1, 1])*(1+1j)/np.sqrt(2)
-    fc = 5e3
+    fc = 6.5e3
     Fs = 44100
     fs = Fs/4
     Ts = 1/fs
@@ -286,6 +315,7 @@ if __name__ == "__main__":
     n_rx = 12
     d_lambda = 0.5 #np.array([0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]) #
     el_spacing = d_lambda*343/fc
+    el_spacing = 0.05
 
     g = rcos(alpha,Ns,trunc)
     up = fil(dp,g,Ns)
@@ -300,7 +330,7 @@ if __name__ == "__main__":
     s = np.real(us * np.exp(2j * np.pi * fc * np.arange(len(us)) / Fs))
     # s /= np.max(np.abs(s))
 
-    snr_db = np.array([5, 8, 12, 15])
+    snr_db = np.array([20,20,20,20])# ([5, 8, 12, 15])
     mse = np.zeros_like(snr_db)
     mse_dl = np.zeros_like(snr_db)
     d_hat_cum = np.zeros((len(snr_db),Nd-300-1), dtype=complex) # has to change if Nt changes :(
@@ -309,8 +339,11 @@ if __name__ == "__main__":
     load = False
     downlink = False
     beamform = False
-
-    K0 = 10
+    check_conditions = True
+    theta = 76
+    if check_conditions == True:
+        print(array_conditions(fc,B,n_rx,el_spacing))
+    K0 = n_rx
     Ns = 7
     Nplus = 4
     # generate rx signal with ISI
@@ -358,22 +391,7 @@ if __name__ == "__main__":
 
         vk = np.copy(v_multichannel)
 
-        if load:
-            vk_real = np.load('data/vk_real.npy')
-            vk_imag = np.load('data/vk_imag.npy')
-            vk = vk_real + 1j*vk_imag
-            d_real = np.load('data/d_real.npy')
-            d_imag = np.load('data/d_imag.npy')
-            d = d_real + 1j*d_imag
-            d = d.flatten()
-        else: 
-            np.save('data/vk_real.npy', np.real(vk))
-            np.save('data/vk_imag.npy', np.imag(vk))
-            np.save('data/d_real.npy', np.real(d))
-            np.save('data/d_imag.npy', np.imag(d))
-
-        M = np.rint(Tmp/T) # just creates the n_fb value
-        M = int(M)
+        M = int(4)
         d_hat, mse_out = dfe_matlab(vk, d, Ns, Nd, M)
         
         d_hat_cum[ind,:] = d_hat
