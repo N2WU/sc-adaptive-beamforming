@@ -88,13 +88,12 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,uf):
     c = 343
     x_rx = d0 * np.arange(n_rx)
     y_rx = np.zeros_like(x_rx)
-    rng = np.random.RandomState(2021)
     vs = sg.resample_poly(v,Fs,fs)
     #vs = sg.resample_poly(v,4,1)
     #vs = np.copy(v)
     s = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs)) #Fs
-    a = 1/350
-    r_multi = rng.randn(int(2*len(s)), n_rx) / snr
+    a = 1/c
+    r_multi = np.random.randn(int(2*len(s)), n_rx) / snr
     for i in range(len(reflection_list)):
         x_tx, y_tx = x_tx_list[i], y_tx_list[i]
         reflection = reflection_list[i] #delay and sum not scale
@@ -107,7 +106,7 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,uf):
         for j, delay_j in enumerate(delay):
             r_multi[delay_j:delay_j+len(s), j] += reflection * s
     peaks_rx = 0
-    for i in range(len(r_multi[0,:])):
+    for i in range(n_rx):
         r = np.squeeze(r_multi[:, i])
         vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs) #Fs
         v = sg.resample_poly(vr,1,Fs/fs)
@@ -143,7 +142,7 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,uf):
 
     # now beamforming and weights
     r = r_multi #[:,:M]
-    M = int(len(r[0,:]))
+    M = int(n_rx)
     r_fft = np.fft.fft(r, axis=0)
     freqs = np.fft.fftfreq(len(r[:, 0]), 1/fs)
     freqs = freqs * Fs/fs
@@ -259,88 +258,87 @@ def dec4psk(x):
     return d
 
 def dfe_matlab(vk, d, Ns, Nd, M): 
-        K = len(vk[:,0]) # maximum
-        Ns = 2
-        N = int(6 * Ns)
-        # M = np.rint(0)
-        delta = 10**(-3)
-        Nt = 4*(N+M)
-        FS = 2
-        Kf1 = 0.001
-        Kf2 = Kf1/10
-        Lf1 = 1
-        L = 0.98
-        P = np.eye(int(K*N+M))/delta
-        Lbf = 0.99
-        Nplus = 4
+    K = len(vk[:,0]) # maximum
+    Ns = 2
+    N = int(6 * Ns)
+    delta = 10**(-3)
+    Nt = 4*(N+M)
+    FS = 2
+    Kf1 = 0.01
+    Kf2 = Kf1/10
+    Lf1 = 1
+    L = 0.99
+    P = np.eye(int(K*N+M))/delta
+    Lbf = 0.99
+    Nplus = 6
 
-        v = vk[:K,]
+    v = vk
 
-        f = np.zeros((Nd,K),dtype=complex)
-        
-        a = np.zeros(int(K*N), dtype=complex)
-        b = np.zeros(M, dtype=complex)
-        c = np.append(a, -b)
-        p = np.zeros(int(K),dtype=complex)
-        d_tilde = np.zeros(M, dtype=complex)
-        Sf = np.zeros(K)
-        x = np.zeros((K,N), dtype=complex)
-        et = np.zeros(Nd, dtype=complex)
-        d_hat = np.zeros_like(d, dtype=complex)
+    f = np.zeros((Nd,K),dtype=complex)
 
-        for n in range(Nd-1):
-            nb = (n) * Ns + (Nplus - 1) * Ns
-            xn = v[
-                :, int(nb + np.ceil(Ns / FS / 2)-1) : int(nb + Ns)
-                : int(Ns / FS)
-            ]
-            for k in range(K):
-               xn[k,:] *= np.exp(-1j * f[n,k])
-            xn = np.fliplr(xn)
-            x = np.concatenate((xn, x), axis=1)
-            x = x[:,:N] # in matlab, this appends zeros
+    a = np.zeros(int(K*N), dtype=complex)
+    b = np.zeros(M, dtype=complex)
+    c = np.append(a, -b)
+    p = np.zeros(int(K),dtype=complex)
+    d_tilde = np.zeros(M, dtype=complex)
+    Sf = np.zeros(K)
+    x = np.zeros((K,N), dtype=complex)
+    et = np.zeros(Nd, dtype=complex)
+    d_hat = np.zeros_like(d, dtype=complex)
 
-            for k in range(K):
-                p[k] = np.inner(x[k,:], np.conj(a[(k*N):(k+1)*N]))
-            psum = p.sum()
-            #print(psum)
+    for n in range(Nd-1):
+        nb = (n) * Ns + (Nplus - 1) * Ns
+        xn = v[
+            :, int(nb + np.ceil(Ns / FS / 2)-1) : int(nb + Ns)
+            : int(Ns / FS)
+        ]
+        for k in range(K):
+            xn[k,:] *= np.exp(-1j * f[n,k])
+        xn = np.fliplr(xn)
+        x = np.concatenate((xn, x), axis=1)
+        x = x[:,:N] # in matlab, this appends zeros
 
-            q = np.inner(d_tilde, b.conj())
-            d_hat[n] = psum - q
+        for k in range(K):
+            p[k] = np.inner(x[k,:], np.conj(a[(k*N):(k+1)*N]))
+        psum = p.sum()
+        #print(psum)
 
-            if n > Nt:
-                d[n] = dec4psk(d_hat[n])
+        q = np.inner(d_tilde, b.conj())
+        d_hat[n] = psum - q
 
-            e = d[n]- d_hat[n]
-            et[n] = np.abs(e ** 2)
+        if n > Nt:
+            d[n] = dec4psk(d_hat[n])
 
-            # PLL
-            phi = np.imag(p * np.conj(p+e))
-            Sf = Sf + phi
-            f[n+1,:] = f[n,:] + Kf1*phi + Kf2*Sf
+        e = d[n]- d_hat[n]
+        et[n] = np.abs(e ** 2)
 
-            y = np.reshape(x,int(K*N))
-            y = np.append(y,d_tilde)
+        # PLL
+        phi = np.imag(p * np.conj(p+e))
+        Sf = Sf + phi
+        f[n+1,:] = f[n,:] + Kf1*phi + Kf2*Sf
 
-            # RLS
-            k = (
-                np.matmul(P, y) / L
-                / (1 + np.matmul(np.matmul(y.conj(), P), y) / L)
-            )
-            c += k * np.conj(e)
-            P = P / L - np.matmul(np.outer(k, y.conj()), P) / L
+        y = np.reshape(x,int(K*N))
+        y = np.append(y,d_tilde)
 
-            a = c[:int(K*N)]
-            b = -c[int(K*N):int(K*N+M)]
-            d_tilde = np.append(d[n], d_tilde)
-            d_tilde = d_tilde[:M]
-
-        mse = 10 * np.log10(
-            np.mean(np.abs(d[Nt : -1 ] - d_hat[Nt : -1]) ** 2)
+        # RLS
+        k = (
+            np.matmul(P, y) / L
+            / (1 + np.matmul(np.matmul(y.conj(), P), y) / L)
         )
-        if np.isnan(mse):
-            mse = 100
-        return d_hat[Nt : -1], mse, #n_err, n_training
+        c += k * np.conj(e)
+        P = P / L - np.matmul(np.outer(k, y.conj()), P) / L
+
+        a = c[:int(K*N)]
+        b = -c[int(K*N):int(K*N+M)]
+        d_tilde = np.append(d[n], d_tilde)
+        d_tilde = d_tilde[:M]
+
+    mse = 10 * np.log10(
+        np.mean(np.abs(d[Nt : -1 ] - d_hat[Nt : -1]) ** 2)
+    )
+    if np.isnan(mse):
+        mse = 100
+    return d_hat[Nt : -1], mse, #n_err, n_training
 
 if __name__ == "__main__":
     Nd = 3000
@@ -361,7 +359,7 @@ if __name__ == "__main__":
     Nso = Ns
     uf = int(fs / R)
 
-    el_num = np.array([8, 10, 12, 16])
+    el_num = np.array([6, 8, 12, 16])
     d_lambda = 0.5 #np.array([0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]) #
     el_spacing = d_lambda*343/fc
     el_spacing = 0.05 #np.array([0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3])
@@ -392,7 +390,7 @@ if __name__ == "__main__":
 
     load = False
     downlink = False
-    beamform = False
+    beamform = True
     check_conditions = True
     Ns = 7
     Nplus = 4
@@ -465,9 +463,9 @@ if __name__ == "__main__":
         plt.title(f'SNR={snr_db} dB, M={el_num[ind]}, fc={fc}, d0={d0}') #(f'd0={d_lambda[ind]}'r'$\lambda$') 
 
     fig, ax = plt.subplots()
-    ax.plot(el_num,mse,'o')
+    ax.plot(el_num,mse,'-o')
     if beamform == True:
-        ax.plot(el_num,mse_wk,'o',color="orange")
+        ax.plot(el_num,mse_wk,'-o',color="orange")
     ax.set_xlabel(r'Number of Elements')
     ax.set_ylabel('MSE (dB)')
     ax.set_title(f'UL MSE for 2-path channel, SNR={snr_db}dB, d0={d0}, fc={fc}')

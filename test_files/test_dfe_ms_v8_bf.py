@@ -80,7 +80,7 @@ def array_conditions(fc,B,n_rx,el_spacing):
         amb_res = (theta_q_deg[-1]-theta_q_deg[0])/2
     return ang_res, amb_res
 
-def transmit(v,snr,Fs,fs,fc,n_rx,d0,uf):
+def transmit(v,snr,Fs,fs,fc,n_rx,d0):
     reflection_list = np.asarray([1,0.5]) # reflection gains
     n_path = len(reflection_list)  
     x_tx_list = np.array([5,-5]) 
@@ -407,7 +407,7 @@ if __name__ == "__main__":
         v /= np.sqrt(pwr(v))
         if downlink:
             v_dl = np.copy(v)
-        vk, y, wk, degdiff = transmit(v,snr,Fs,fs,fc,n_rx,d0,uf) # this already does rough phase alignment
+        vk, y, wk, degdiff = transmit(v,snr,Fs,fs,fc,n_rx,d0) # this already does rough phase alignment
         print(degdiff)
         if load:
             vk_real = np.load('data/vk_real.npy')
