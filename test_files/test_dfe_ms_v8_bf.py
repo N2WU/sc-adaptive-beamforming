@@ -313,7 +313,7 @@ if __name__ == "__main__":
     dp = np.array([1, -1, 1, -1, 1, 1, -1, -1, 1, 1, 1, 1, 1])*(1+1j)/np.sqrt(2)
     fc = 6.5e3
     Fs = 44100
-    fs = Fs #/4
+    fs = Fs/4
     Ts = 1/fs
     alpha = 0.25
     trunc = 4
