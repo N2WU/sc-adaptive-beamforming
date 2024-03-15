@@ -55,85 +55,6 @@ def pwr(x):
     p = np.sum(np.abs(x)**2)/len(x)
     return p
 
-def transmit_s(s,snr,n_rx,el_spacing,R,fc,fs):
-    reflection_list = np.asarray([1,0.5]) # reflection gains
-    n_path = len(reflection_list)  
-    x_tx_list = np.array([5,-5]) 
-    y_tx_list = np.array([20,20])
-    c = 343
-    duration = 10 # amount of padding, basically
-    x_rx = np.arange(0, el_spacing*n_rx, el_spacing)
-    y_rx = np.zeros_like(x_rx)
-    rng = np.random.RandomState(2021)
-    r_multichannel = rng.randn(duration * fs, n_rx) / snr
-    for i in range(len(reflection_list)):
-        x_tx, y_tx = x_tx_list[i], y_tx_list[i]
-        reflection = reflection_list[i] #delay and sum not scale
-        dx, dy = x_rx - x_tx, y_rx - y_tx
-        d_rx_tx = np.sqrt(dx**2 + dy**2)
-        delta_tau = d_rx_tx / c
-        delay = np.round(delta_tau * fs).astype(int) # sample delay
-        for j, delay_j in enumerate(delay):
-            r_multichannel[delay_j:delay_j+len(s), j] += reflection * s
-    
-
-    M = 12
-    r = r_multichannel[:,:M]
-    r_fft = np.fft.fft(r, axis=0)
-    freqs = np.fft.fftfreq(len(r[:, 0]), 1/fs)
-
-    index = np.where((freqs >= fc-R/2) & (freqs < fc+R/2))[0]
-    N = len(index)
-    fk = freqs[index]       
-    yk = r_fft[index, :]    # N*M
-    theta_start = -45
-    theta_end = 45
-    N_theta = 200
-    S_theta = np.zeros((N_theta,))
-    S_theta3D = np.zeros((N_theta, N))
-    theta_start = np.deg2rad(theta_start)
-    theta_end = np.deg2rad(theta_end)
-    theta_list = np.linspace(theta_start, theta_end, N_theta)
-    for n_theta, theta in enumerate(theta_list):
-        d_tau = np.sin(theta) * el_spacing/c
-        # for k in range(N):
-        #     S_M = np.exp(-2j * np.pi * fk[k] * d_tau * np.arange(M).reshape(M,1))
-        #     S_theta[n_theta] += np.abs(np.vdot(S_M.T, yk[k, :].T))**2
-        S_M = np.exp(-2j * np.pi * d_tau * np.dot(fk.reshape(N, 1), np.arange(M).reshape(1, M)))    # N*M
-        SMxYk = np.einsum('ij,ji->i', S_M.conj(), yk.T)
-        S_theta[n_theta] = np.real(np.vdot(SMxYk, SMxYk))
-        S_theta3D[n_theta, :] = np.abs(SMxYk)**2
-
-    # n_path = 1 # number of path
-    S_theta_peaks_idx, _ = sg.find_peaks(S_theta, height=0)
-    S_theta_peaks = S_theta[S_theta_peaks_idx]
-    theta_m_idx = np.argsort(S_theta_peaks)
-    theta_m = theta_list[S_theta_peaks_idx[theta_m_idx[-n_path:]]]
-    # print(theta_m/np.pi*180)
-
-    y_tilde = np.zeros((N,n_path), dtype=complex)
-    for k in range(N):
-        d_tau_m = np.sin(theta_m) * el_spacing/c
-        try:
-            d_tau_new = d_tau_m.reshape(1, n_path)
-        except:
-            d_tau_new = np.append(d_tau_m, [0])
-            d_tau_new = d_tau_new.reshape(1, n_path)
-        Sk = np.exp(-2j * np.pi * fk[k] * np.arange(M).reshape(M, 1) @ d_tau_new)
-        for i in range(n_path):
-            e_pu = np.zeros((n_path,1))
-            e_pu[i, 0] = 1
-            wk = Sk @ np.linalg.inv(Sk.conj().T @ Sk) @ e_pu
-            y_tilde[k, i] = wk.conj().T @ yk[k, :].T
-
-    y_fft = np.zeros((len(r[:, 0]), n_path), complex)
-    y_fft[index, :] = y_tilde
-    y = np.fft.ifft(y_fft, axis=0)
-
-    # processing the signal we get from bf
-    r_multichannel_1 = y
-    return r_multichannel, wk
-
 def transmit(v,snr,Fs,fs,fc,n_rx,d0,uf):
     reflection_list = np.asarray([1,0.5]) # reflection gains
     n_path = len(reflection_list)  
@@ -141,20 +62,20 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,uf):
     y_tx_list = np.array([20,20])
     c = 343
     duration = 10 # amount of padding, basically
-    x_rx = np.arange(0, d0*n_rx, d0)
+    x_rx = d0 * np.arange(n_rx)
     y_rx = np.zeros_like(x_rx)
     rng = np.random.RandomState(2021)
     vs = sg.resample_poly(v,Fs,fs)
     s = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
     a = 1/350
-    r_multi = rng.randn(int(duration * fs), n_rx) / snr
+    r_multi = rng.randn(int(2*len(s)), n_rx) / snr
     for i in range(len(reflection_list)):
         x_tx, y_tx = x_tx_list[i], y_tx_list[i]
         reflection = reflection_list[i] #delay and sum not scale
         dx, dy = x_rx - x_tx, y_rx - y_tx
         d_rx_tx = np.sqrt(dx**2 + dy**2)
         delta_tau = d_rx_tx / c
-        delay = np.round(delta_tau * fs).astype(int) # sample delay
+        delay = np.round(delta_tau * Fs).astype(int) # sample delay
         for j, delay_j in enumerate(delay):
             r_multi[delay_j:delay_j+len(s), j] += reflection * s
     peaks_rx = 0
@@ -349,7 +270,7 @@ if __name__ == "__main__":
     # init bits (training bits are a select repition of bits)
     
     dp = np.array([1, -1, 1, -1, 1, 1, -1, -1, 1, 1, 1, 1, 1])*(1+1j)/np.sqrt(2)
-    fc = 17e3
+    fc = 15e3
     Fs = 44100
     fs = Fs/4
     Ts = 1/fs
@@ -365,6 +286,7 @@ if __name__ == "__main__":
     n_rx = 12
     d_lambda = 0.5 #np.array([0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]) #
     el_spacing = d_lambda*343/fc
+    el_spacing = 0.05
 
     g = rcos(alpha,Ns,trunc)
     up = fil(dp,g,Ns)
@@ -382,13 +304,13 @@ if __name__ == "__main__":
     snr_db = np.array([5, 8, 12, 15])
     mse = np.zeros_like(snr_db)
     mse_dl = np.zeros_like(snr_db)
-    d_hat_cum = np.zeros((len(snr_db),Nd-300-1), dtype=complex) # has to change if Nt changes :(
+    d_hat_cum = np.zeros((len(snr_db),Nd-300-1), dtype=complex) # has to change if Nt changes :( 300 or 64
     d_hat_dl_cum = np.zeros_like(d_hat_cum,dtype=complex)
 
     load = False
-    downlink = True
+    downlink = False
 
-    K0 = 10
+    K0 = n_rx
     Ns = 7
     Nplus = 4
     # generate rx signal with ISI
@@ -465,7 +387,7 @@ if __name__ == "__main__":
             np.save('data/d_imag.npy', np.imag(d))
 
         M = np.rint(Tmp/T) # just creates the n_fb value
-        M = int(M)
+        M = int(63) #63 #4(?)
         d_hat, mse_out = dfe_matlab(vk, d, Ns, Nd, M)
         
         d_hat_cum[ind,:] = d_hat

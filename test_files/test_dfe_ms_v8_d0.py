@@ -141,6 +141,7 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,uf):
             lenvm = len(v_multichannel[0,:])
     vk = np.copy(v_multichannel)
 
+    # now beamforming and weights
     r = r_multi #[:,:M]
     M = int(len(r[0,:]))
     r_fft = np.fft.fft(r, axis=0)
@@ -363,7 +364,7 @@ if __name__ == "__main__":
     n_rx = 12
     d_lambda = 0.5 #np.array([0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]) #
     el_spacing = d_lambda*343/fc
-    el_spacing = 0.05
+    el_spacing = np.array([0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3])
     d_lambda = el_spacing*fc/343
 
     g = rcos(alpha,Ns,trunc)
@@ -379,36 +380,35 @@ if __name__ == "__main__":
     s = np.real(us * np.exp(2j * np.pi * fc * np.arange(len(us)) / Fs))
     # s /= np.max(np.abs(s))
 
-    snr_db = np.array([8, 10, 12, 15])
-    mse = np.zeros_like(snr_db)
-    mse_dl = np.zeros_like(snr_db)
-    d_hat_cum = np.zeros((len(snr_db),Nd-64-1), dtype=complex) # has to change if Nt changes :(
-    d_hat_dl_cum = np.zeros_like(d_hat_cum,dtype=complex)
+    snr_db = 10 #np.array([5, 8, 12, 15])
+    mse = np.zeros_like(d_lambda)
+    mse_dl = np.zeros_like(mse)
+    d_hat_cum = np.zeros((len(mse),Nd-64-1), dtype=complex) # has to change if Nt changes :(
+    d_hat_dl_cum = np.zeros_like(mse,dtype=complex)
 
-    mse_wk = np.zeros_like(snr_db)
-    d_hat_cum_wk = np.zeros((len(snr_db),Nd-64-1), dtype=complex) # has to change if Nt changes :(
+    mse_wk = np.zeros_like(mse)
+    d_hat_cum_wk = np.zeros((len(mse),Nd-64-1), dtype=complex) # has to change if Nt changes :(
+    deg_diff_cum = np.zeros_like(mse)
 
     load = False
     downlink = False
     beamform = True
     check_conditions = True
-    if check_conditions == True:
-        print(array_conditions(fc,B,n_rx,el_spacing))
     K0 = n_rx
     Ns = 7
     Nplus = 4
     # generate rx signal with ISI
-    for ind in range(len(snr_db)):
+    for ind in range(len(el_spacing)):
         #for repeat in range(4):
-        snr = 10**(0.1 * snr_db[ind])
-        d0 = el_spacing
+        snr = 10**(0.1 * snr_db)
+        d0 = el_spacing[ind]
         #for i in range(K0):
         v = np.copy(u) #np.zeros(len(u), dtype=complex)
         v /= np.sqrt(pwr(v))
         if downlink:
             v_dl = np.copy(v)
-        vk, y, wk, degdiff = transmit(v,snr,Fs,fs,fc,n_rx,d0,uf) # this already does rough phase alignment
-        print(degdiff)
+        vk, y, wk, deg_diff = transmit(v,snr,Fs,fs,fc,n_rx,d0,uf) # this already does rough phase alignment
+        deg_diff_cum[ind] = deg_diff
         if load:
             vk_real = np.load('data/vk_real.npy')
             vk_imag = np.load('data/vk_imag.npy')
@@ -453,24 +453,24 @@ if __name__ == "__main__":
             mse_dl[ind] = mse_out_dl
             d_hat_dl_cum[ind,:] = d_hat_dl
 
-    for ind in range(len(snr_db)):
+    for ind in range(len(mse)):
         # plot const
-        plt.subplot(2, 2, int(ind+1))
+        plt.subplot(2, 4, int(ind+1))
         plt.scatter(np.real(d_hat_cum[ind,:]), np.imag(d_hat_cum[ind,:]), marker='x')
         if beamform == True:
             plt.scatter(np.real(d_hat_cum_wk[ind,:]), np.imag(d_hat_cum_wk[ind,:]), marker='x', color="orange")
             plt.legend(['MRC Only','Beamforming'])
         plt.axis('square')
         plt.axis([-2, 2, -2, 2])
-        plt.title(f'SNR={snr_db[ind]} dB, M={n_rx}, fc={fc}, d0={d0}') #(f'd0={d_lambda[ind]}'r'$\lambda$') 
+        plt.title(f'SNR={snr_db} dB, M={n_rx}, fc={fc}, d0={d0}') #(f'd0={d_lambda[ind]}'r'$\lambda$') 
 
     fig, ax = plt.subplots()
-    ax.plot(snr_db,mse,'-o')
+    ax.plot(el_spacing,mse,'o')
     if beamform == True:
-        ax.plot(snr_db,mse_wk,'-o',color="orange")
-    ax.set_xlabel(r'SNR (dB)')
+        ax.plot(el_spacing,mse_wk,'o',color="orange")
+    ax.set_xlabel(r'element spacing, cm')
     ax.set_ylabel('MSE (dB)')
-    ax.set_title(f'UL MSE for 2-path channel, dB, M={n_rx}, fc={fc}, d0={d0}')
+    ax.set_title(f'UL MSE for 2-path channel, SNR={snr_db}dB, M={n_rx}, fc={fc}')
     if beamform == True:
         ax.legend(['MRC Only','Beamforming'])
 
@@ -489,4 +489,6 @@ if __name__ == "__main__":
             plt.title(f'SNR={snr_db[ind]} dB') #(f'd0={d_lambda[ind]}'r'$\lambda$')
 
     plt.show()
-    print(mse)
+    if check_conditions == True:
+        for i in range(len(el_spacing)):
+            print(array_conditions(fc,B,n_rx,el_spacing[i]), deg_diff_cum[i])
