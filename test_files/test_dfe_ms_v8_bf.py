@@ -80,25 +80,25 @@ def array_conditions(fc,B,n_rx,el_spacing):
         amb_res = (theta_q_deg[-1]-theta_q_deg[0])/2
     return ang_res, amb_res
 
-def transmit(v,snr,Fs,fs,fc,n_rx,d0):
+def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
     reflection_list = np.asarray([1,0.5]) # reflection gains
     n_path = len(reflection_list)  
     x_tx_list = np.array([5,-5]) 
     y_tx_list = np.array([20,20])
     c = 343
     x_rx = d0 * np.arange(n_rx)
+    x_rx = x_rx - d0*n_rx/2 #center on origin
     y_rx = np.zeros_like(x_rx)
-    rng = np.random.RandomState(2021)
     vs = sg.resample_poly(v,Fs,fs)
     #vs = sg.resample_poly(v,4,1)
     #vs = np.copy(v)
     s = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs)) #Fs
-    a = 1/350
-    r_multi = rng.randn(int(2*len(s)), n_rx) / snr
+    a = 1/c
+    r_multi = np.random.randn(int(2*len(s)), n_rx) / snr
     for i in range(len(reflection_list)):
         x_tx, y_tx = x_tx_list[i], y_tx_list[i]
         reflection = reflection_list[i] #delay and sum not scale
-        true_angle = 90 - np.rad2deg(np.arctan(np.abs(y_tx/x_tx)))
+        true_angle = np.rad2deg(np.arctan(np.abs(x_tx/y_tx)))
         dx, dy = x_rx - x_tx, y_rx - y_tx
         d_rx_tx = np.sqrt(dx**2 + dy**2)
         delta_tau = d_rx_tx / c
@@ -107,6 +107,87 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0):
         for j, delay_j in enumerate(delay):
             r_multi[delay_j:delay_j+len(s), j] += reflection * s
     peaks_rx = 0
+    wk = np.ones(n_rx)
+    deg_diff = 0
+    if bf == 1:
+        # now beamforming and weights
+        r = r_multi #[:,:M]
+        M = int(n_rx)
+        r_fft = np.fft.fft(r, axis=0)
+        freqs = np.fft.fftfreq(len(r[:, 0]), 1/fs) # this is the same as 1/Fs with no adjustment
+        freqs = freqs*Fs/fs
+
+        index = np.where((freqs >= fc-R/2) & (freqs < fc+R/2))[0]
+        N = len(index) #uhh???
+        if N > 0:
+            fk = freqs[index]       
+            yk = r_fft[index, :]    # N*M
+            theta_start = -45
+            theta_end = 45
+            N_theta = 200
+            deg_theta = np.linspace(theta_start,theta_end,N_theta)
+            S_theta = np.zeros((N_theta,))
+            S_theta3D = np.zeros((N_theta, N))
+            theta_start = np.deg2rad(theta_start)
+            theta_end = np.deg2rad(theta_end)
+            theta_list = np.linspace(theta_start, theta_end, N_theta)
+            for n_theta, theta in enumerate(theta_list):
+                d_tau = np.sin(theta) * d0/c
+                # for k in range(N):
+                #     S_M = np.exp(-2j * np.pi * fk[k] * d_tau * np.arange(M).reshape(M,1))
+                #     S_theta[n_theta] += np.abs(np.vdot(S_M.T, yk[k, :].T))**2
+                S_M = np.exp(-2j * np.pi * d_tau * np.dot(fk.reshape(N, 1), np.arange(M).reshape(1, M)))    # N*M
+                SMxYk = np.einsum('ij,ji->i', S_M.conj(), yk.T)
+                S_theta[n_theta] = np.real(np.vdot(SMxYk, SMxYk)) #real part
+                S_theta[n_theta] = np.abs(S_theta[n_theta])**2 # doesn't necessarily make a difference
+                S_theta3D[n_theta, :] = np.abs(SMxYk)**2
+
+            # n_path = 1 # number of path
+            S_theta_peaks_idx, _ = sg.find_peaks(S_theta, height=0) #S_theta
+            S_theta_peaks = S_theta[S_theta_peaks_idx] #S_theta
+            theta_m_idx = np.argsort(S_theta_peaks)
+            theta_m = theta_list[S_theta_peaks_idx[theta_m_idx[-n_path:]]]
+            print(theta_m/np.pi*180)
+
+            y_tilde = np.zeros((N,n_path), dtype=complex)
+            for k in range(N):
+                d_tau_m = np.sin(theta_m) * d0/c
+                try:
+                    d_tau_new = d_tau_m.reshape(1, n_path)
+                except:
+                    d_tau_new = np.append(d_tau_m, [0])
+                    d_tau_new = d_tau_new.reshape(1, n_path)
+                Sk = np.exp(-2j * np.pi * fk[k] * np.arange(M).reshape(M, 1) @ d_tau_new)
+                for i in range(n_path):
+                    e_pu = np.zeros((n_path,1))
+                    e_pu[i, 0] = 1
+                    wk = Sk @ np.linalg.inv(Sk.conj().T @ Sk) @ e_pu
+                    y_tilde[k, i] = wk.conj().T @ yk[k, :].T
+
+            y_fft = np.zeros((len(r[:, 0]), n_path), complex)
+            y_fft[index, :] = y_tilde
+            y = np.fft.ifft(y_fft, axis=0)
+            bf_flag = True
+        else:
+            y = np.copy(vk).T
+            bf_flag = False
+        
+        est_deg = np.argmax(S_theta)
+        deg_ax = np.flip(deg_theta)
+        deg_diff = np.abs(true_angle - deg_ax[est_deg])
+        
+        """
+        print(true_angle)
+        plt.plot(deg_ax,S_theta)
+        plt.axvline(x=true_angle, linestyle="--", color="red")
+        plt.axvline(x=deg_ax[est_deg], linestyle="--", color="blue")
+        plt.text(deg_ax[est_deg], np.max(S_theta), f'Est Angle={deg_ax[est_deg]}')
+        plt.text(true_angle, np.max(S_theta)*1e-5, f'True Angle={true_angle}')
+        plt.title(f'S(Theta) for 10 dB, M={n_rx}, B = 3.9 kHz, d0 ={d0}')
+        plt.show()
+        """
+        
+        r_multi = np.copy(y)
     for i in range(len(r_multi[0,:])):
         r = np.squeeze(r_multi[:, i])
         vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs) #Fs
@@ -141,81 +222,7 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0):
             lenvm = len(v_multichannel[0,:])
     vk = np.copy(v_multichannel)
 
-    r = r_multi #[:,:M]
-    M = int(len(r[0,:]))
-    r_fft = np.fft.fft(r, axis=0)
-    freqs = np.fft.fftfreq(len(r[:, 0]), 1/fs)
-    freqs = freqs * Fs/fs
-
-    index = np.where((freqs >= fc-R/2) & (freqs < fc+R/2))[0]
-    N = len(index) #uhh???
-    if N > 0:
-        fk = freqs[index]       
-        yk = r_fft[index, :]    # N*M
-        theta_start = -45
-        theta_end = 45
-        N_theta = 200
-        deg_theta = np.linspace(theta_start,theta_end,N_theta)
-        S_theta = np.zeros((N_theta,))
-        S_theta3D = np.zeros((N_theta, N))
-        theta_start = np.deg2rad(theta_start)
-        theta_end = np.deg2rad(theta_end)
-        theta_list = np.linspace(theta_start, theta_end, N_theta)
-        for n_theta, theta in enumerate(theta_list):
-            d_tau = np.sin(theta) * d0/c
-            # for k in range(N):
-            #     S_M = np.exp(-2j * np.pi * fk[k] * d_tau * np.arange(M).reshape(M,1))
-            #     S_theta[n_theta] += np.abs(np.vdot(S_M.T, yk[k, :].T))**2
-            S_M = np.exp(-2j * np.pi * d_tau * np.dot(fk.reshape(N, 1), np.arange(M).reshape(1, M)))    # N*M
-            SMxYk = np.einsum('ij,ji->i', S_M.conj(), yk.T)
-            S_theta[n_theta] = np.real(np.vdot(SMxYk, SMxYk))
-            S_theta3D[n_theta, :] = np.abs(SMxYk)**2
-
-        # n_path = 1 # number of path
-        S_theta_peaks_idx, _ = sg.find_peaks(S_theta, height=0)
-        S_theta_peaks = S_theta[S_theta_peaks_idx]
-        theta_m_idx = np.argsort(S_theta_peaks)
-        theta_m = theta_list[S_theta_peaks_idx[theta_m_idx[-n_path:]]]
-        # print(theta_m/np.pi*180)
-
-        y_tilde = np.zeros((N,n_path), dtype=complex)
-        for k in range(N):
-            d_tau_m = np.sin(theta_m) * d0/c
-            try:
-                d_tau_new = d_tau_m.reshape(1, n_path)
-            except:
-                d_tau_new = np.append(d_tau_m, [0])
-                d_tau_new = d_tau_new.reshape(1, n_path)
-            Sk = np.exp(-2j * np.pi * fk[k] * np.arange(M).reshape(M, 1) @ d_tau_new)
-            for i in range(n_path):
-                e_pu = np.zeros((n_path,1))
-                e_pu[i, 0] = 1
-                wk = Sk @ np.linalg.inv(Sk.conj().T @ Sk) @ e_pu
-                y_tilde[k, i] = wk.conj().T @ yk[k, :].T
-
-        y_fft = np.zeros((len(r[:, 0]), n_path), complex)
-        y_fft[index, :] = y_tilde
-        y = np.fft.ifft(y_fft, axis=0)
-        bf_flag = True
-    else:
-        y = np.copy(vk).T
-        wk = np.zeros(n_rx)
-        bf_flag = False
-    
-    est_deg = np.argmax(S_theta)
-    deg_ax = np.flip(deg_theta)
-    deg_diff = np.abs(true_angle - deg_ax[est_deg])
-    """
-    print(true_angle)
-    plt.plot(deg_ax,S_theta)
-    plt.axvline(x=true_angle, linestyle="--", color="red")
-    plt.axvline(x=deg_ax[est_deg], linestyle="--", color="blue")
-    plt.text(deg_ax[est_deg], np.max(S_theta), f'Est Angle={deg_ax[est_deg]}')
-    plt.text(true_angle, np.max(S_theta)*1e-5, f'True Angle={true_angle}')
-    plt.title(f'S(Theta) for 10 dB, M=12, B = 3.9 kHz, d0 ={d0}')
-    plt.show()
-    """
-    return vk, y.T, wk, deg_diff
+    return vk, wk, deg_diff
 
 def transmit_dl(v_dl,wk,snr,n_rx,el_spacing,R,fc,fs):
     vs = sg.resample_poly(v_dl,Fs,fs)
@@ -258,88 +265,87 @@ def dec4psk(x):
     return d
 
 def dfe_matlab(vk, d, Ns, Nd, M): 
-        K = len(vk[:,0]) # maximum
-        Ns = 2
-        N = int(6 * Ns)
-        # M = np.rint(0)
-        delta = 10**(-3)
-        Nt = 4*(N+M)
-        FS = 2
-        Kf1 = 0.001
-        Kf2 = Kf1/10
-        Lf1 = 1
-        L = 0.98
-        P = np.eye(int(K*N+M))/delta
-        Lbf = 0.99
-        Nplus = 4
+    K = len(vk[:,0]) # maximum
+    Ns = 2
+    N = int(6 * Ns)
+    delta = 10**(-3)
+    Nt = 4*(N+M)
+    FS = 2
+    Kf1 = 0.001
+    Kf2 = Kf1/10
+    Lf1 = 1
+    L = 0.99
+    P = np.eye(int(K*N+M))/delta
+    Lbf = 0.99
+    Nplus = 6
 
-        v = vk[:K,]
+    v = vk
 
-        f = np.zeros((Nd,K),dtype=complex)
-        
-        a = np.zeros(int(K*N), dtype=complex)
-        b = np.zeros(M, dtype=complex)
-        c = np.append(a, -b)
-        p = np.zeros(int(K),dtype=complex)
-        d_tilde = np.zeros(M, dtype=complex)
-        Sf = np.zeros(K)
-        x = np.zeros((K,N), dtype=complex)
-        et = np.zeros(Nd, dtype=complex)
-        d_hat = np.zeros_like(d, dtype=complex)
+    f = np.zeros((Nd,K),dtype=complex)
+    
+    a = np.zeros(int(K*N), dtype=complex)
+    b = np.zeros(M, dtype=complex)
+    c = np.append(a, -b)
+    p = np.zeros(int(K),dtype=complex)
+    d_tilde = np.zeros(M, dtype=complex)
+    Sf = np.zeros(K)
+    x = np.zeros((K,N), dtype=complex)
+    et = np.zeros(Nd, dtype=complex)
+    d_hat = np.zeros_like(d, dtype=complex)
 
-        for n in range(Nd-1):
-            nb = (n) * Ns + (Nplus - 1) * Ns
-            xn = v[
-                :, int(nb + np.ceil(Ns / FS / 2)-1) : int(nb + Ns)
-                : int(Ns / FS)
-            ]
-            for k in range(K):
-               xn[k,:] *= np.exp(-1j * f[n,k])
-            xn = np.fliplr(xn)
-            x = np.concatenate((xn, x), axis=1)
-            x = x[:,:N] # in matlab, this appends zeros
+    for n in range(Nd-1):
+        nb = (n) * Ns + (Nplus - 1) * Ns
+        xn = v[
+            :, int(nb + np.ceil(Ns / FS / 2)-1) : int(nb + Ns)
+            : int(Ns / FS)
+        ]
+        for k in range(K):
+            xn[k,:] *= np.exp(-1j * f[n,k])
+        xn = np.fliplr(xn)
+        x = np.concatenate((xn, x), axis=1)
+        x = x[:,:N] # in matlab, this appends zeros
 
-            for k in range(K):
-                p[k] = np.inner(x[k,:], np.conj(a[(k*N):(k+1)*N]))
-            psum = p.sum()
-            #print(psum)
+        for k in range(K):
+            p[k] = np.inner(x[k,:], np.conj(a[(k*N):(k+1)*N]))
+        psum = p.sum()
+        #print(psum)
 
-            q = np.inner(d_tilde, b.conj())
-            d_hat[n] = psum - q
+        q = np.inner(d_tilde, b.conj())
+        d_hat[n] = psum - q
 
-            if n > Nt:
-                d[n] = dec4psk(d_hat[n])
+        if n > Nt:
+            d[n] = dec4psk(d_hat[n])
 
-            e = d[n]- d_hat[n]
-            et[n] = np.abs(e ** 2)
+        e = d[n]- d_hat[n]
+        et[n] = np.abs(e ** 2)
 
-            # PLL
-            phi = np.imag(p * np.conj(p+e))
-            Sf = Sf + phi
-            f[n+1,:] = f[n,:] + Kf1*phi + Kf2*Sf
+        # PLL
+        phi = np.imag(p * np.conj(p+e))
+        Sf = Sf + phi
+        f[n+1,:] = f[n,:] + Kf1*phi + Kf2*Sf
 
-            y = np.reshape(x,int(K*N))
-            y = np.append(y,d_tilde)
+        y = np.reshape(x,int(K*N))
+        y = np.append(y,d_tilde)
 
-            # RLS
-            k = (
-                np.matmul(P, y) / L
-                / (1 + np.matmul(np.matmul(y.conj(), P), y) / L)
-            )
-            c += k * np.conj(e)
-            P = P / L - np.matmul(np.outer(k, y.conj()), P) / L
-
-            a = c[:int(K*N)]
-            b = -c[int(K*N):int(K*N+M)]
-            d_tilde = np.append(d[n], d_tilde)
-            d_tilde = d_tilde[:M]
-
-        mse = 10 * np.log10(
-            np.mean(np.abs(d[Nt : -1 ] - d_hat[Nt : -1]) ** 2)
+        # RLS
+        k = (
+            np.matmul(P, y) / L
+            / (1 + np.matmul(np.matmul(y.conj(), P), y) / L)
         )
-        if np.isnan(mse):
-            mse = 100
-        return d_hat[Nt : -1], mse, #n_err, n_training
+        c += k * np.conj(e)
+        P = P / L - np.matmul(np.outer(k, y.conj()), P) / L
+
+        a = c[:int(K*N)]
+        b = -c[int(K*N):int(K*N+M)]
+        d_tilde = np.append(d[n], d_tilde)
+        d_tilde = d_tilde[:M]
+
+    mse = 10 * np.log10(
+        np.mean(np.abs(d[Nt : -1 ] - d_hat[Nt : -1]) ** 2)
+    )
+    if np.isnan(mse):
+        mse = 100
+    return d_hat[Nt : -1], mse, #n_err, n_training
 
 if __name__ == "__main__":
     Nd = 3000
@@ -382,15 +388,16 @@ if __name__ == "__main__":
     snr_db = np.array([8, 10, 12, 15])
     mse = np.zeros_like(snr_db)
     mse_dl = np.zeros_like(snr_db)
-    d_hat_cum = np.zeros((len(snr_db),Nd-64-1), dtype=complex) # has to change if Nt changes :(
+    d_hat_cum = np.zeros((len(snr_db),Nd-88-1), dtype=complex) # has to change if Nt changes :(
     d_hat_dl_cum = np.zeros_like(d_hat_cum,dtype=complex)
 
     mse_wk = np.zeros_like(snr_db)
-    d_hat_cum_wk = np.zeros((len(snr_db),Nd-64-1), dtype=complex) # has to change if Nt changes :(
+    d_hat_cum_wk = np.zeros((len(snr_db),Nd-88-1), dtype=complex) # has to change if Nt changes :(
+    deg_diff_cum = np.zeros_like(mse,dtype=float)
 
     load = False
     downlink = False
-    beamform = True
+    beamform = range(2)
     check_conditions = True
     if check_conditions == True:
         print(array_conditions(fc,B,n_rx,el_spacing))
@@ -399,41 +406,41 @@ if __name__ == "__main__":
     Nplus = 4
     # generate rx signal with ISI
     for ind in range(len(snr_db)):
-        #for repeat in range(4):
-        snr = 10**(0.1 * snr_db[ind])
-        d0 = el_spacing
-        #for i in range(K0):
-        v = np.copy(u) #np.zeros(len(u), dtype=complex)
-        v /= np.sqrt(pwr(v))
-        if downlink:
-            v_dl = np.copy(v)
-        vk, y, wk, degdiff = transmit(v,snr,Fs,fs,fc,n_rx,d0) # this already does rough phase alignment
-        print(degdiff)
-        if load:
-            vk_real = np.load('data/vk_real.npy')
-            vk_imag = np.load('data/vk_imag.npy')
-            vk = vk_real + 1j*vk_imag
-            d_real = np.load('data/d_real.npy')
-            d_imag = np.load('data/d_imag.npy')
-            d = d_real + 1j*d_imag
-            d = d.flatten()
-        else: 
-            np.save('data/vk_real.npy', np.real(vk))
-            np.save('data/vk_imag.npy', np.imag(vk))
-            np.save('data/d_real.npy', np.real(d))
-            np.save('data/d_imag.npy', np.imag(d))
+        for bf in beamform:    
+            #for repeat in range(4):
+            snr = 10**(0.1 * snr_db[ind])
+            d0 = el_spacing
+            #for i in range(K0):
+            v = np.copy(u) #np.zeros(len(u), dtype=complex)
+            v /= np.sqrt(pwr(v))
+            vk, wk, deg_diff = transmit(v,snr,Fs,fs,fc,n_rx,d0,bf) # this already does rough phase alignment
+            deg_diff_cum[ind] = deg_diff
+            if load:
+                vk_real = np.load('data/vk_real.npy')
+                vk_imag = np.load('data/vk_imag.npy')
+                vk = vk_real + 1j*vk_imag
+                d_real = np.load('data/d_real.npy')
+                d_imag = np.load('data/d_imag.npy')
+                d = d_real + 1j*d_imag
+                d = d.flatten()
+            else: 
+                np.save('data/vk_real.npy', np.real(vk))
+                np.save('data/vk_imag.npy', np.imag(vk))
+                np.save('data/d_real.npy', np.real(d))
+                np.save('data/d_imag.npy', np.imag(d))
 
-        M = int(4)
+            M = int(10)
 
-        d_hat, mse_out = dfe_matlab(vk, d, Ns, Nd, M)
-        
-        d_hat_cum[ind,:] = d_hat
-        mse[ind] = mse_out
-
-        if beamform == True:
-            d_hat_wk, mse_out_wk = dfe_matlab(y, d, Ns, Nd, M)
-            d_hat_cum_wk[ind,:] = d_hat_wk
-            mse_wk[ind] = mse_out_wk
+            if bf == 1:
+                d_hat_wk, mse_out_wk = dfe_matlab(vk, d, Ns, Nd, M)
+                d_hat_cum_wk[ind,:] = d_hat_wk
+                mse_wk[ind] = mse_out_wk
+            elif bf == 0:
+                #vk = 1/n_rx * np.sum(vk[::2,:],axis=0)
+                #vk = np.reshape(vk,(1,-1))
+                d_hat, mse_out = dfe_matlab(vk, d, Ns, Nd, M)
+                d_hat_cum[ind,:] = d_hat
+                mse[ind] = mse_out
 
         if downlink: # ouch
             v_single = transmit_dl(v_dl,wk,snr+5,n_rx,el_spacing,R,fc,fs)
@@ -453,26 +460,23 @@ if __name__ == "__main__":
             mse_dl[ind] = mse_out_dl
             d_hat_dl_cum[ind,:] = d_hat_dl
 
-    for ind in range(len(snr_db)):
+    for ind in range(len(mse)):
         # plot const
         plt.subplot(2, 2, int(ind+1))
         plt.scatter(np.real(d_hat_cum[ind,:]), np.imag(d_hat_cum[ind,:]), marker='x')
-        if beamform == True:
-            plt.scatter(np.real(d_hat_cum_wk[ind,:]), np.imag(d_hat_cum_wk[ind,:]), marker='x', color="orange")
-            plt.legend(['MRC Only','Beamforming'])
+        plt.scatter(np.real(d_hat_cum_wk[ind,:]), np.imag(d_hat_cum_wk[ind,:]), marker='x', color="orange")
+        plt.legend(['MRC Only','Beamforming'])
         plt.axis('square')
         plt.axis([-2, 2, -2, 2])
         plt.title(f'SNR={snr_db[ind]} dB, M={n_rx}, fc={fc}, d0={d0}') #(f'd0={d_lambda[ind]}'r'$\lambda$') 
 
     fig, ax = plt.subplots()
     ax.plot(snr_db,mse,'-o')
-    if beamform == True:
-        ax.plot(snr_db,mse_wk,'-o',color="orange")
+    ax.plot(snr_db,mse_wk,'-o',color="orange")
     ax.set_xlabel(r'SNR (dB)')
     ax.set_ylabel('MSE (dB)')
-    ax.set_title(f'UL MSE for 2-path channel, dB, M={n_rx}, fc={fc}, d0={d0}')
-    if beamform == True:
-        ax.legend(['MRC Only','Beamforming'])
+    ax.set_title(f'UL MSE for 2-path channel, M={n_rx}, d0={d0}, fc={fc}')
+    ax.legend(['MRC Only','Beamforming'])
 
     if downlink:
         fig1, ax1 = plt.subplots()
