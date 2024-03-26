@@ -85,10 +85,11 @@ def uplink(v,Fs,fs,fc,n_rx):
     s_tx = np.copy(s)
     s_tx = s_tx.reshape(-1,1) 
 
-    r_multi = testbed(s_tx,1,n_rx,Fs) # s-by-nrx
+    r = testbed(s_tx,1,n_rx,Fs) # s-by-nrx
     n_path = 2
     d0 = 0.05 
     c = 343
+    M = n_rx
     r_fft = np.fft.fft(r, axis=0)
     freqs = np.fft.fftfreq(len(r[:, 0]), 1/fs) # this is the same as 1/Fs with no adjustment
     freqs = freqs*Fs/fs
@@ -291,7 +292,7 @@ if __name__ == "__main__":
     
     dp = np.array([1, -1, 1, -1, 1, 1, -1, -1, 1, 1, 1, 1, 1])*(1+1j)/np.sqrt(2)
     fc = 6.5e3
-    Fs = 44100
+    Fs = 96000
     fs = Fs/4
     Ts = 1/fs
     alpha = 0.25

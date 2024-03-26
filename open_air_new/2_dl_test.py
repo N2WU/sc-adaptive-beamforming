@@ -70,7 +70,7 @@ def testbed(s_tx,n_tx,n_rx,Fs):
         for ch in range(16,16+n_tx):
             tx[:,ch] = s_tx
         print("Transmitting...")
-        rx_raw = sd.playrec(tx * 0.05, samplerate=Fs, blocking=True)
+        rx_raw = sd.playrec(tx * 0.5, samplerate=Fs, blocking=True)
         rx = rx_raw[:,:n_rx]
         print("Received")
     else:
@@ -78,7 +78,7 @@ def testbed(s_tx,n_tx,n_rx,Fs):
         for ch in range(n_tx):
             tx[:,ch] = s_tx[:,ch]
         print("Transmitting...")
-        rx_raw = sd.playrec(tx * 0.05, samplerate=Fs, blocking=True)
+        rx_raw = sd.playrec(tx * 0.5, samplerate=Fs, blocking=True)
         rx = rx_raw[:,16:16+n_rx] #testbed specific
         print("Received")
     return rx
@@ -99,12 +99,16 @@ def downlink(v_dl,wk,Fs,fs,fc,n_rx,n_tx):
     v_single = sg.resample_poly(vr,1,Fs/fs)
     vps = v_single[:len(up)+Nz*Ns]
     delvals,_ = fdel(vps,up)
+    adj_len = delvals+len(up)
+    if adj_len > len(vps): 
+        delvals = 0 # don't adjust with xcorr if it would otherwise ruin signal
     vp1s = vps[delvals:delvals+len(up)]
     fdes,_,_ = fdop(vp1s,up,fs,12)
+    if fdes == -fs/2:
+            fdes = 0 # forced
     v_single = v_single*np.exp(-1j*2*np.pi*np.arange(len(v_single))*fdes*Ts)
     v_single = sg.resample_poly(v_single,np.rint(10**4),np.rint((1/(1+fdes/fc))*(10**4)))
     
-    v_single = v_single[delvals:delvals+len(u)]
     v_single = v_single[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
     v_single = sg.resample_poly(v_single,2,Ns)
     v_single = np.concatenate((v_single,np.zeros(Nplus*2))) # should occur after
@@ -214,7 +218,7 @@ if __name__ == "__main__":
     # init bits (training bits are a select repition of bits)
     
     dp = np.array([1, -1, 1, -1, 1, 1, -1, -1, 1, 1, 1, 1, 1])*(1+1j)/np.sqrt(2)
-    fc = 12e3
+    fc = 6.5e3
     Fs = 96000
     fs = Fs/4
     Ts = 1/fs
