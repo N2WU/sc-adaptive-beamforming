@@ -90,8 +90,6 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
     x_rx = x_rx - d0*n_rx/2 #center on origin
     y_rx = np.zeros_like(x_rx)
     vs = sg.resample_poly(v,Fs,fs)
-    #vs = sg.resample_poly(v,4,1)
-    #vs = np.copy(v)
     s = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs)) #Fs
     a = 1/c
     r_multi = np.random.randn(int(2*len(s)), n_rx) / snr
@@ -223,12 +221,10 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
 
     return vk, wk, deg_diff
 
-def transmit_dl(v_dl,snr,Fs,fs,fc,n_rx,d0):
+def transmit_dl(v_dl,wk,snr,Fs,fs,fc,n_rx,d0):
     vs = sg.resample_poly(v_dl,Fs,fs)
     s_dls = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
     # apply wk here
-    #s_dl = wk * s_dl
-    #s_dl = np.tile(s_dl,(n_rx,1))
     s_dl = np.dot(np.reshape(wk,[-1,1]),np.reshape(np.fft.fft(s_dls),[1,-1]))
     s_dl = np.fft.ifft(s_dl)
     reflection_list = np.asarray([1,0.5]) # reflection gains 
@@ -238,8 +234,7 @@ def transmit_dl(v_dl,snr,Fs,fs,fc,n_rx,d0):
     x_tx = d0 * np.arange(n_rx)
     x_tx = x_tx - d0*n_rx/2 #center on origin
     y_tx = np.zeros_like(x_tx)
-    rng = np.random.RandomState(2021)
-    r_single = np.random.randn(int(2*len(s_dl[0,:]))) / snr
+    r_single = np.random.randn(int(2*len(s_dl[0,:]))).astype('complex') / snr
     for i in range(len(reflection_list)):
         x_rx, y_rx = x_rx_list[i], y_rx_list[i]
         reflection = reflection_list[i] #delay and sum not scale
@@ -379,8 +374,7 @@ if __name__ == "__main__":
     Nso = Ns
     uf = int(fs / R)
 
-    el_num = np.array([6, 10, 12, 16])
-    el_num = np.arange(6,18,2)
+    el_num = 12
     el_spacing = 0.05 #np.array([0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3])
     d_lambda = el_spacing*fc/343
 
@@ -397,18 +391,21 @@ if __name__ == "__main__":
     s = np.real(us * np.exp(2j * np.pi * fc * np.arange(len(us)) / Fs))
     # s /= np.max(np.abs(s))
 
-    snr_db = 10 #np.array([5, 8, 12, 15])
-    mse = np.zeros_like(el_num)
+    snr_db = np.array([5, 8, 12, 15])
+    mse = np.zeros_like(snr_db)
     mse_dl = np.zeros_like(mse)
     d_hat_cum = np.zeros((len(mse),Nd-88-1), dtype=complex) # has to change if Nt changes :(
-    d_hat_dl_cum = np.zeros_like(mse,dtype=complex)
+    d_hat_dl_cum = np.zeros((len(mse),Nd-48-1),dtype=complex)
+
+    d_hat_dl_cum_wk = np.zeros((len(mse),Nd-48-1),dtype=complex)
+    mse_dl_wk = np.zeros_like(mse)
 
     mse_wk = np.zeros_like(mse)
     d_hat_cum_wk = np.zeros((len(mse),Nd-88-1), dtype=complex) # has to change if Nt changes :(
-    deg_diff_cum = np.zeros_like(mse,dtype=float)
+    deg_diff_cum = np.zeros((len(mse),Nd-88-1),dtype=float)
 
     load = False
-    downlink = False
+    downlink = True
     beamform = range(2)
     check_conditions = False
     Ns = 7
@@ -416,9 +413,9 @@ if __name__ == "__main__":
     # generate rx signal with ISI
     for ind in range(len(mse)):
         for bf in beamform:
-            snr = 10**(0.1 * snr_db)
+            snr = 10**(0.1 * snr_db[ind])
             d0 = el_spacing
-            n_rx = el_num[ind]
+            n_rx = el_num
             v = np.copy(u)
             v /= np.sqrt(pwr(v))
             if downlink:
@@ -453,42 +450,46 @@ if __name__ == "__main__":
                 mse[ind] = mse_out
 
             if downlink: # ouch
-                v_single = transmit_dl(v_dl,snr,Fs,fs,fc,n_rx,d0)
-                d_hat_dl, mse_out_dl = dfe_matlab(v_single, d, Ns, Nd, int(0))
-                mse_dl[ind] = mse_out_dl
-                d_hat_dl_cum[ind,:] = d_hat_dl
-    """
-    for ind in range(len(mse)):
-        # plot const
-        plt.subplot(2, 2, int(ind+1))
-        plt.scatter(np.real(d_hat_cum[ind,:]), np.imag(d_hat_cum[ind,:]), marker='x')
-        plt.scatter(np.real(d_hat_cum_wk[ind,:]), np.imag(d_hat_cum_wk[ind,:]), marker='x', color="orange")
-        plt.legend(['MRC Only','Beamforming'])
-        plt.axis('square')
-        plt.axis([-2, 2, -2, 2])
-        plt.title(f'SNR={snr_db} dB, M={el_num[ind]}, fc={fc}, d0={d0}') #(f'd0={d_lambda[ind]}'r'$\lambda$') 
-    """
+                if bf==1:
+                    wk_dl = np.copy(wk)
+                    v_single = transmit_dl(v_dl,wk_dl,snr,Fs,fs,fc,n_rx,d0)
+                    d_hat_dl_wk, mse_out_dl_wk = dfe_matlab(v_single, d, Ns, Nd, int(0))
+                    mse_dl_wk[ind] = mse_out_dl_wk
+                    d_hat_dl_cum_wk[ind,:] = d_hat_dl_wk
+                elif bf == 0:
+                    wk_dl = np.ones_like(wk)
+                    v_single = transmit_dl(v_dl,wk_dl,snr,Fs,fs,fc,n_rx,d0)
+                    d_hat_dl, mse_out_dl = dfe_matlab(v_single, d, Ns, Nd, int(0))
+                    mse_dl[ind] = mse_out_dl
+                    d_hat_dl_cum[ind,:] = d_hat_dl
+
     fig, ax = plt.subplots()
-    #ax.plot(el_num,mse,'-o')
-    ax.plot(el_num,mse_wk,'-o',color="orange")
+    ax.plot(snr_db,mse_wk,'-o',color="orange")
     ax.set_xlabel(r'Number of Elements')
     ax.set_ylabel('MSE (dB)')
-    ax.set_title(f'UL MSE for 2-path channel, SNR={snr_db}dB, d0={d0}, fc={fc}')
+    ax.set_title(f'UL MSE for 2-path channel, M={n_rx}, d0={d0}, fc={fc}')
     #ax.legend(['MRC Only','Beamforming'])
 
     if downlink:
         fig1, ax1 = plt.subplots()
-        ax1.plot(snr_db,mse_dl,'o')
+        ax1.plot(snr_db,mse_dl,'-o',color='blue')
+        ax1.plot(snr_db,mse_dl_wk,'-o',color='orange')
         ax1.set_xlabel(r'SNR (dB)')
         ax1.set_ylabel('MSE (dB)')
         ax1.set_title('MSE vs SNR for QPSK Signal DL')
+        ax1.legend(["No Beamform","Beamform DL"])
         
+        fig2,axs2 = plt.subplots(2, 2)
         for ind in range(len(snr_db)):
             plt.subplot(2, 2, int(ind+1))
-            plt.scatter(np.real(d_hat_dl_cum[ind,:]), np.imag(d_hat_dl_cum[ind,:]), marker='x')
+            plt.scatter(np.real(d_hat_dl_cum[ind,:]), np.imag(d_hat_dl_cum[ind,:]), marker='x',color='blue')
+            plt.scatter(np.real(d_hat_dl_cum_wk[ind,:]), np.imag(d_hat_dl_cum_wk[ind,:]), marker='x',color='orange')
             plt.axis('square')
             plt.axis([-2, 2, -2, 2])
             plt.title(f'SNR={snr_db[ind]} dB') #(f'd0={d_lambda[ind]}'r'$\lambda$')
+            plt.legend(["No Beamform","Beamform DL"])
+        fig2.suptitle('DL QPSK Constellation, 2-path, Lin. EQ')
+    
     print(deg_diff_cum)
     plt.show()
     if check_conditions == True:
