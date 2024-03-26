@@ -490,7 +490,7 @@ if __name__ == "__main__":
             plt.legend(["No Beamform","Beamform DL"])
         fig2.suptitle('DL QPSK Constellation, 2-path, Lin. EQ')
     
-    print(deg_diff_cum)
+    #print(deg_diff_cum)
     plt.show()
     if check_conditions == True:
         for i in range(len(mse)):
