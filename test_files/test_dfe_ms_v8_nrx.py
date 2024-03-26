@@ -366,6 +366,7 @@ if __name__ == "__main__":
     uf = int(fs / R)
 
     el_num = np.array([6, 10, 12, 16])
+    el_num = np.arange(6,18,2)
     el_spacing = 0.05 #np.array([0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3])
     d_lambda = el_spacing*fc/343
 
@@ -454,7 +455,7 @@ if __name__ == "__main__":
                 d_hat_dl, mse_out_dl = dfe_matlab(v_single, d, Ns, Nd, M)
                 mse_dl[ind] = mse_out_dl
                 d_hat_dl_cum[ind,:] = d_hat_dl
-
+    """
     for ind in range(len(mse)):
         # plot const
         plt.subplot(2, 2, int(ind+1))
@@ -464,7 +465,7 @@ if __name__ == "__main__":
         plt.axis('square')
         plt.axis([-2, 2, -2, 2])
         plt.title(f'SNR={snr_db} dB, M={el_num[ind]}, fc={fc}, d0={d0}') #(f'd0={d_lambda[ind]}'r'$\lambda$') 
-
+    """
     fig, ax = plt.subplots()
     #ax.plot(el_num,mse,'-o')
     ax.plot(el_num,mse_wk,'-o',color="orange")

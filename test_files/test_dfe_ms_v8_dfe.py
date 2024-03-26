@@ -288,7 +288,7 @@ def dfe_matlab(vk, d, Ns, Nd, M):
     delta = 10**(-3)
     Nt = 4*(N+M)
     FS = 2
-    Kf1 = 0.001
+    Kf1 = 0.000
     Kf2 = Kf1/10
     Lf1 = 1
     L = 0.99
@@ -402,7 +402,7 @@ if __name__ == "__main__":
     s = np.real(us * np.exp(2j * np.pi * fc * np.arange(len(us)) / Fs))
     # s /= np.max(np.abs(s))
 
-    snr_db = np.array([10, 10, 10]) #, 15])
+    snr_db = np.array([5, 5, 5]) #, 15])
     mse = np.zeros_like(snr_db)
     mse_dl = np.zeros_like(snr_db)
     d_hat_cum = np.zeros((len(snr_db),Nd-88-1), dtype=complex) # has to change if Nt changes :(
@@ -414,7 +414,7 @@ if __name__ == "__main__":
 
     load = False
     downlink = False
-    beamform = range(2)
+    #beamform = range(2)
     check_conditions = True
     if check_conditions == True:
         print(array_conditions(fc,B,n_rx,el_spacing))
@@ -423,91 +423,36 @@ if __name__ == "__main__":
     Nplus = 4
     # generate rx signal with ISI
     for ind in range(len(snr_db)):
-        for bf in beamform:    
-            #for repeat in range(4):
-            snr = 10**(0.1 * snr_db[ind])
-            d0 = el_spacing
-            #for i in range(K0):
-            v = np.copy(u) #np.zeros(len(u), dtype=complex)
-            v /= np.sqrt(pwr(v))
-            vk, wk, deg_diff = transmit(v,snr,Fs,fs,fc,n_rx,d0,bf) # this already does rough phase alignment
-            deg_diff_cum[ind] = deg_diff
-            if load:
-                vk_real = np.load('data/vk_real.npy')
-                vk_imag = np.load('data/vk_imag.npy')
-                vk = vk_real + 1j*vk_imag
-                d_real = np.load('data/d_real.npy')
-                d_imag = np.load('data/d_imag.npy')
-                d = d_real + 1j*d_imag
-                d = d.flatten()
-            else: 
-                np.save('data/vk_real.npy', np.real(vk))
-                np.save('data/vk_imag.npy', np.imag(vk))
-                np.save('data/d_real.npy', np.real(d))
-                np.save('data/d_imag.npy', np.imag(d))
-
+    #for bf in beamform:    
+        #for repeat in range(4):
+        snr = 10**(0.1 * snr_db[ind])
+        d0 = el_spacing
+        #for i in range(K0):
+        v = np.copy(u) #np.zeros(len(u), dtype=complex)
+        v /= np.sqrt(pwr(v))
+        vk, wk, deg_diff = transmit(v,snr,Fs,fs,fc,n_rx,d0,True) # this already does rough phase alignment
+        deg_diff_cum[ind] = deg_diff
+        if ind==0:
+            d_hat1, mse_out = dfe_matlab(vk, d, int(0), Nd, int(0))
+        if ind==1:
+            M = int(0)
+            d_hat2, mse_out = dfe_matlab(vk, d, Ns, Nd, M)
+        if ind==2:
             M = int(10)
+            d_hat3, mse_out = dfe_matlab(vk, d, Ns, Nd, M)
+            mse[ind] = mse_out
 
-            if bf == 1:
-                d_hat_wk, mse_out_wk = dfe_matlab(vk, d, Ns, Nd, M)
-                d_hat_cum_wk[ind,:] = d_hat_wk
-                mse_wk[ind] = mse_out_wk
-            elif bf == 0:
-                #vk = 1/n_rx * np.sum(vk[::2,:],axis=0)
-                #vk = np.reshape(vk,(1,-1))
-                d_hat, mse_out = dfe_matlab(vk, d, Ns, Nd, M)
-                d_hat_cum[ind,:] = d_hat
-                mse[ind] = mse_out
-
-        if downlink: # ouch
-            v_single = transmit_dl(v_dl,wk,snr+5,n_rx,el_spacing,R,fc,fs)
-            vps = v_single[:len(up)+Nz*Ns]
-            delvals,_ = fdel(vps,up)
-            vp1s = vps[delvals:delvals+len(up)]
-            fdes,_,_ = fdop(vp1s,up,fs,12)
-            v_single = v_single*np.exp(-1j*2*np.pi*np.arange(len(v_single))*fdes*Ts)
-            v_single = sg.resample_poly(v_single,np.rint(10**4),np.rint((1/(1+fdes/fc))*(10**4)))
-            
-            v_single = v_single[delvals:delvals+len(u)]
-            v_single = v_single[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
-            v_single = sg.resample_poly(v_single,2,Ns)
-            v_single = np.concatenate((v_single,np.zeros(Nplus*2))) # should occur after
-            v_single = v_single.reshape(1,-1) 
-            d_hat_dl, mse_out_dl = dfe_matlab(v_single, d, Ns, Nd, M)
-            mse_dl[ind] = mse_out_dl
-            d_hat_dl_cum[ind,:] = d_hat_dl
-
-    for ind in range(len(mse)):
-        # plot const
-        plt.subplot(2, 2, int(ind+1))
-        plt.scatter(np.real(d_hat_cum[ind,:]), np.imag(d_hat_cum[ind,:]), marker='x')
-        plt.scatter(np.real(d_hat_cum_wk[ind,:]), np.imag(d_hat_cum_wk[ind,:]), marker='x', color="orange")
-        plt.legend(['MRC Only','Beamforming'])
-        plt.axis('square')
-        plt.axis([-2, 2, -2, 2])
-        plt.title(f'SNR={snr_db[ind]} dB, M={n_rx}, fc={fc}, d0={d0}') #(f'd0={d_lambda[ind]}'r'$\lambda$') 
-
-    fig, ax = plt.subplots()
-    ax.plot(snr_db,mse,'-o')
-    ax.plot(snr_db,mse_wk,'-o',color="orange")
-    ax.set_xlabel(r'SNR (dB)')
-    ax.set_ylabel('MSE (dB)')
-    ax.set_title(f'UL MSE for 2-path channel, M={n_rx}, d0={d0}, fc={fc}')
-    ax.legend(['MRC Only','Beamforming'])
-
-    if downlink:
-        fig1, ax1 = plt.subplots()
-        ax1.plot(snr_db,mse_dl,'o')
-        ax1.set_xlabel(r'SNR (dB)')
-        ax1.set_ylabel('MSE (dB)')
-        ax1.set_title('MSE vs SNR for QPSK Signal DL')
-        
-        for ind in range(len(snr_db)):
-            plt.subplot(2, 2, int(ind+1))
-            plt.scatter(np.real(d_hat_dl_cum[ind,:]), np.imag(d_hat_dl_cum[ind,:]), marker='x')
-            plt.axis('square')
-            plt.axis([-2, 2, -2, 2])
-            plt.title(f'SNR={snr_db[ind]} dB') #(f'd0={d_lambda[ind]}'r'$\lambda$')
+    text_blk = ["Hard Decision","Lin. Eq FF=12","DFE, FF=12 FB=10"]
+    # plot const
+    plt.subplot(1, 2, 1)
+    plt.scatter(np.real(d_hat2), np.imag(d_hat2), marker='x')
+    plt.axis('square')
+    plt.axis([-2, 2, -2, 2])
+    plt.title("Lin. Eq FF=12") #(f'd0={d_lambda[ind]}'r'$\lambda$') 
+    plt.subplot(1, 2, 2)
+    plt.scatter(np.real(d_hat3), np.imag(d_hat3), marker='x')
+    plt.axis('square')
+    plt.axis([-2, 2, -2, 2])
+    plt.title("DFE, FF=12 FB=10") #(f'd0={d_lambda[ind]}'r'$\lambda$') 
 
     plt.show()
-    print(mse)
