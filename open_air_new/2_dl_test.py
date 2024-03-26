@@ -83,22 +83,34 @@ def testbed(s_tx,n_tx,n_rx,Fs):
         print("Received")
     return rx
 
-def downlink(v_dl,angle_deg,Fs,fs,fc,n_rx,n_tx):
+def downlink(v_dl,wk,Fs,fs,fc,n_rx,n_tx):
     vs = sg.resample_poly(v_dl,Fs,fs)
     s = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
     r = np.zeros(len(s))
     # slightly confused
     # generate angle steering vec and apply
-    steering_vec = np.exp(-1j*2*np.pi*np.sin(np.deg2rad(angle_deg))*np.arange(n_tx)*0.05) #5cm spacing
-    s_tx = np.dot(np.reshape(steering_vec,[-1,1]),np.reshape(s,[1,-1]))
+    s_tx = np.dot(np.reshape(wk,[-1,1]),np.reshape(np.fft.fft(s),[1,-1]))
+    s_tx = np.fft.ifft(s_tx)
 
     r = testbed(s_tx.T,n_tx,n_rx,Fs) # s-by-nrx
 
     r = np.squeeze(r)
     vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
-    v = sg.resample_poly(vr,1,Fs/fs)
+    v_single = sg.resample_poly(vr,1,Fs/fs)
+    vps = v_single[:len(up)+Nz*Ns]
+    delvals,_ = fdel(vps,up)
+    vp1s = vps[delvals:delvals+len(up)]
+    fdes,_,_ = fdop(vp1s,up,fs,12)
+    v_single = v_single*np.exp(-1j*2*np.pi*np.arange(len(v_single))*fdes*Ts)
+    v_single = sg.resample_poly(v_single,np.rint(10**4),np.rint((1/(1+fdes/fc))*(10**4)))
     
-    return v
+    v_single = v_single[delvals:delvals+len(u)]
+    v_single = v_single[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
+    v_single = sg.resample_poly(v_single,2,Ns)
+    v_single = np.concatenate((v_single,np.zeros(Nplus*2))) # should occur after
+    vk = v_single.reshape(1,-1) 
+
+    return vk
 
 def dec4psk(x):
     xr = np.real(x)
@@ -225,51 +237,25 @@ if __name__ == "__main__":
     u = np.concatenate((up, np.zeros(Nz*Ns), ud))
     us = sg.resample_poly(u,Fs,fs)
     
-    K0 = n_rx
     Ns = 7
     Nplus = 4
-    # generate rx signal with ISI
-    Tmp = 40/1000
-    tau = (3 + np.random.randint(1,33,6))/1000
-    h = np.exp(-tau/Tmp)
-    h /= np.sqrt(np.sum(np.abs(h)))
-    taus = np.rint(tau/Ts)
-    v = np.zeros(len(u) + int(np.max(taus)),dtype=complex)
-    for p in range(len(tau)):
-        taup = int(taus[p])
-        vp = np.append(np.zeros(taup),h[p]*u)
-        lendiff = len(v) - len(vp)
-        if lendiff > 0:
-            vp = np.append(vp,np.zeros(lendiff))
-        elif lendiff < 0:
-            v = np.append(v,np.zeros(-lendiff))
-        v = v+vp
-    v /= np.sqrt(pwr(v))
+    
+    v = np.copy(u)
     v_dl = np.copy(v)
 
     angle_deg = 0
-    v_single = downlink(v_dl,angle_deg,Fs,fs,fc,n_rx,n_tx)
-    vps = v_single[:len(up)+Nz*Ns]
-    delvals,_ = fdel(vps,up)
-    vp1s = vps[delvals:delvals+len(up)]
-    fdes,_,_ = fdop(vp1s,up,fs,12)
-    v_single = v_single*np.exp(-1j*2*np.pi*np.arange(len(v_single))*fdes*Ts)
-    v_single = sg.resample_poly(v_single,np.rint(10**4),np.rint((1/(1+fdes/fc))*(10**4)))
-    
-    v_single = v_single[delvals:delvals+len(u)]
-    v_single = v_single[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
-    v_single = sg.resample_poly(v_single,2,Ns)
-    v_single = np.concatenate((v_single,np.zeros(Nplus*2))) # should occur after
-    vk = v_single.reshape(1,-1) 
+
+    wk_real = np.load('data/wk_real.npy')
+    wk_imag = np.load('data/wk_imag.npy')
+    wk = wk_real + 1j*wk_imag
+
+    vk = downlink(v_dl,wk,Fs,fs,fc,n_rx,n_tx)
 
     np.save('data/vk_dl_real.npy', np.real(vk))
     np.save('data/vk_dl_imag.npy', np.imag(vk))
     np.save('data/d_dl_real.npy', np.real(d))
     np.save('data/d_dl_imag.npy', np.imag(d))
 
-    M = np.rint(Tmp/T) # just creates the n_fb value
-    M = int(M)
-
-    d_hat_dl, mse_out_dl = dfe_matlab(vk, d, Ns, Nd, M)
+    d_hat_dl, mse_out_dl = dfe_matlab(vk, d, Ns, Nd, int(0))
 
     print(mse_out_dl)
