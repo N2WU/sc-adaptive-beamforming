@@ -392,7 +392,7 @@ if __name__ == "__main__":
     # s /= np.max(np.abs(s))
 
     snr_db = np.array([10]) #np.array([5, 8, 12, 15])
-    N_FF = np.array([50, 40, 30, 20])
+    N_FF = np.array([30, 25, 20, 15])
     #N_FB = np.array([20, 15, 10, 5])
     mse = np.zeros_like(N_FF)
     mse_dl = np.zeros_like(mse)
@@ -417,7 +417,7 @@ if __name__ == "__main__":
         for bf in beamform:
             snr = 10**(0.1 * snr_db)
             N = N_FF[ind]
-            FB = 30 #N_FB[ind]
+            FB = 15 #N_FB[ind]
             d0 = el_spacing
             n_rx = el_num
             v = np.copy(u)
