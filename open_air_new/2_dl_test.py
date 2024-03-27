@@ -67,7 +67,7 @@ def testbed(s_tx,n_tx,n_rx,Fs):
     if n_tx < n_rx:
         # implies uplink
         s_tx = s_tx.flatten()
-        for ch in range(16,16+n_tx):
+        for ch in range(18,18+n_tx):
             tx[:,ch] = s_tx
         print("Transmitting...")
         rx_raw = sd.playrec(tx * 0.05, samplerate=Fs, blocking=True)
@@ -79,7 +79,7 @@ def testbed(s_tx,n_tx,n_rx,Fs):
             tx[:,ch] = s_tx[:,ch]
         print("Transmitting...")
         rx_raw = sd.playrec(tx * 0.05, samplerate=Fs, blocking=True)
-        rx = rx_raw[:,16:16+n_rx] #testbed specific
+        rx = rx_raw[:,18:18+n_rx] #testbed specific
         print("Received")
     return rx
 

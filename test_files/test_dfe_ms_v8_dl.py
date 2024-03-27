@@ -391,7 +391,7 @@ if __name__ == "__main__":
     s = np.real(us * np.exp(2j * np.pi * fc * np.arange(len(us)) / Fs))
     # s /= np.max(np.abs(s))
 
-    snr_db = np.array([5, 8, 12, 15])
+    snr_db = np.array([30, 25, 20, 15])
     mse = np.zeros_like(snr_db)
     mse_dl = np.zeros_like(mse)
     d_hat_cum = np.zeros((len(mse),Nd-88-1), dtype=complex) # has to change if Nt changes :(
