@@ -134,6 +134,22 @@ if __name__ == "__main__":
     plt.axis('square')
     plt.axis([-2, 2, -2, 2])
     plt.title(f'Downlink QPSK Constellation') 
+    plt.show()
+
+    # s(theta)
+    theta_start = -45
+    theta_end = 45
+    N_theta = 200
+    deg_theta = np.linspace(theta_start,theta_end,N_theta)
+    S_theta = np.load('data/S_theta.npy')
+    est_deg = np.argmax(S_theta)
+    deg_ax = np.flip(deg_theta)
+    plt.plot(deg_ax,S_theta)
+    #plt.axvline(x=true_angle, linestyle="--", color="red")
+    plt.axvline(x=deg_ax[est_deg], linestyle="--", color="blue")
+    plt.text(deg_ax[est_deg], np.max(S_theta), f'Est Angle={deg_ax[est_deg]}')
+    #plt.text(true_angle, np.max(S_theta)*1e-5, f'True Angle={true_angle}')
+    plt.title(f'S(Theta) Open Air, M={12}, B = 3.9 kHz, d0 =5cm')
     plt.show() 
 
     # uplink/downlink MSE (could probably re-run with iterations)
