@@ -79,7 +79,7 @@ def testbed(s_tx,n_tx,n_rx,Fs):
         print("Received")
     return rx
 
-def uplink(v,Fs,fs,fc,n_rx):
+def uplink(v,Fs,fs,fc,n_rx,bf):
     vs = sg.resample_poly(v,Fs,fs)
     s = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
     s_tx = np.copy(s)
@@ -152,8 +152,10 @@ def uplink(v,Fs,fs,fc,n_rx):
     est_deg = np.argmax(S_theta)
     deg_ax = np.flip(deg_theta)
     # deg_diff = np.abs(true_angle - deg_ax[est_deg])
-    
-    r_multi = np.copy(y)
+    if bf==1:
+        r_multi = np.copy(y)
+    elif bf==0:
+        r_multi = np.copy(r)
     print(np.shape(r_multi))
     for i in range(len(r_multi[0,:])):
         r = np.squeeze(r_multi[:, i])
@@ -162,13 +164,16 @@ def uplink(v,Fs,fs,fc,n_rx):
 
         vp = v[:len(up)+Nz*Ns]
         delval,_ = fdel(vp,up)
+        adj_len = delval+len(up)
+        if adj_len > len(vp): 
+            delval = 0 # don't adjust with xcorr if it would otherwise ruin signal
         vp1 = vp[delval:delval+len(up)]
         lendiff = len(up)-len(vp1)
         if lendiff > 0:
             vp1 = np.append(vp1, np.zeros(lendiff))
         fde,_,_ = fdop(vp1,up,fs,12)
-        v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
-        v = sg.resample_poly(v,np.rint(10**4),np.rint((1/(1+fde/fc))*(10**4)))
+        #v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
+        #v = sg.resample_poly(v,np.rint(10**4),np.rint((1/(1+fde/fc))*(10**4)))
         
         v = v[delval:delval+len(u)]
         v = v[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
