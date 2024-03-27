@@ -70,7 +70,7 @@ def testbed(s_tx,n_tx,n_rx,Fs):
         for ch in range(16,16+n_tx):
             tx[:,ch] = s_tx
         print("Transmitting...")
-        rx_raw = sd.playrec(tx * 0.5, samplerate=Fs, blocking=True)
+        rx_raw = sd.playrec(tx * 0.1, samplerate=Fs, blocking=True)
         rx = rx_raw[:,:n_rx]
         print("Received")
     else:
@@ -78,7 +78,7 @@ def testbed(s_tx,n_tx,n_rx,Fs):
         for ch in range(n_tx):
             tx[:,ch] = s_tx[:,ch]
         print("Transmitting...")
-        rx_raw = sd.playrec(tx * 0.5, samplerate=Fs, blocking=True)
+        rx_raw = sd.playrec(tx * 0.1, samplerate=Fs, blocking=True)
         rx = rx_raw[:,16:16+n_rx] #testbed specific
         print("Received")
     return rx
@@ -91,6 +91,9 @@ def downlink(v_dl,wk,Fs,fs,fc,n_rx,n_tx):
     # generate angle steering vec and apply
     s_tx = np.dot(np.reshape(wk,[-1,1]),np.reshape(np.fft.fft(s),[1,-1]))
     s_tx = np.fft.ifft(s_tx)
+
+    #for i in range(n_tx):
+    #    s_tx[:,i] /= np.sqrt(pwr(s_tx[:,i]))
 
     r = testbed(s_tx.T,n_tx,n_rx,Fs) # s-by-nrx
 
@@ -106,8 +109,8 @@ def downlink(v_dl,wk,Fs,fs,fc,n_rx,n_tx):
     fdes,_,_ = fdop(vp1s,up,fs,12)
     if fdes == -fs/2:
             fdes = 0 # forced
-    v_single = v_single*np.exp(-1j*2*np.pi*np.arange(len(v_single))*fdes*Ts)
-    v_single = sg.resample_poly(v_single,np.rint(10**4),np.rint((1/(1+fdes/fc))*(10**4)))
+    #v_single = v_single*np.exp(-1j*2*np.pi*np.arange(len(v_single))*fdes*Ts)
+    #v_single = sg.resample_poly(v_single,np.rint(10**4),np.rint((1/(1+fdes/fc))*(10**4)))
     
     v_single = v_single[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
     v_single = sg.resample_poly(v_single,2,Ns)
@@ -253,7 +256,7 @@ if __name__ == "__main__":
     wk_imag = np.load('data/wk_imag.npy')
     wk = wk_real + 1j*wk_imag
 
-    vk_nobf = downlink(v_dl,np.ones_like(wk),Fs,fs,fc,n_rx,n_tx)
+    vk_nobf = downlink(v_dl,np.ones_like(wk)/10,Fs,fs,fc,n_rx,n_tx)
 
     vk_bf = downlink(v_dl,wk,Fs,fs,fc,n_rx,n_tx)
 
@@ -268,5 +271,6 @@ if __name__ == "__main__":
 
     d_hat_dl, mse_nobf_dl = dfe_matlab(vk_nobf, d, Ns, Nd, int(10))
 
-    print(mse_bf_dl)
-    print(mse_nobf_dl)
+    print("NOBF:", mse_nobf_dl)
+    print("BF:", mse_bf_dl)
+    
