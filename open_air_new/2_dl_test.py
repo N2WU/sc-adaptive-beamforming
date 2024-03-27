@@ -213,7 +213,7 @@ def dfe_matlab(vk, d, Ns, Nd, M):
         return d_hat[Nt : -1], mse, #n_err, n_training
 
 if __name__ == "__main__":
-    n_tx = 8
+    n_tx = 12
     n_rx = 1
     # generate an s-by-n_tx signal
     Nd = 3000
@@ -256,7 +256,7 @@ if __name__ == "__main__":
     wk_imag = np.load('data/wk_imag.npy')
     wk = wk_real + 1j*wk_imag
 
-    vk_nobf = downlink(v_dl,np.ones_like(wk)/10,Fs,fs,fc,n_rx,n_tx)
+    vk_nobf = downlink(v_dl,np.ones_like(wk)/n_tx,Fs,fs,fc,n_rx,n_tx)
 
     vk_bf = downlink(v_dl,wk,Fs,fs,fc,n_rx,n_tx)
 
