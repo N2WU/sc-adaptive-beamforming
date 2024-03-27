@@ -253,13 +253,20 @@ if __name__ == "__main__":
     wk_imag = np.load('data/wk_imag.npy')
     wk = wk_real + 1j*wk_imag
 
-    vk = downlink(v_dl,wk,Fs,fs,fc,n_rx,n_tx)
+    vk_nobf = downlink(v_dl,np.ones_like(wk),Fs,fs,fc,n_rx,n_tx)
 
-    np.save('data/vk_dl_real.npy', np.real(vk))
-    np.save('data/vk_dl_imag.npy', np.imag(vk))
+    vk_bf = downlink(v_dl,wk,Fs,fs,fc,n_rx,n_tx)
+
+    np.save('data/vk_dl_nobf_real.npy', np.real(vk_nobf))
+    np.save('data/vk_dl_nobf_imag.npy', np.imag(vk_nobf))
+    np.save('data/vk_dl_bf_real.npy', np.real(vk_bf))
+    np.save('data/vk_dl_bf_imag.npy', np.imag(vk_bf))
     np.save('data/d_dl_real.npy', np.real(d))
     np.save('data/d_dl_imag.npy', np.imag(d))
 
-    d_hat_dl, mse_out_dl = dfe_matlab(vk, d, Ns, Nd, int(0))
+    d_hat_dl, mse_bf_dl = dfe_matlab(vk_bf, d, Ns, Nd, int(10))
 
-    print(mse_out_dl)
+    d_hat_dl, mse_nobf_dl = dfe_matlab(vk_nobf, d, Ns, Nd, int(10))
+
+    print(mse_bf_dl)
+    print(mse_nobf_dl)

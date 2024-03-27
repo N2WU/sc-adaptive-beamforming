@@ -319,10 +319,14 @@ if __name__ == "__main__":
 
     v = np.copy(u)
 
-    vk, wk, S_theta = uplink(v,Fs,fs,fc,n_rx)
+    vk_nobf, _, _ = uplink(v,Fs,fs,fc,n_rx,0)
 
-    np.save('data/vk_ul_real.npy', np.real(vk))
-    np.save('data/vk_ul_imag.npy', np.imag(vk))
+    vk_bf, wk, S_theta = uplink(v,Fs,fs,fc,n_rx,1)
+
+    np.save('data/vk_ul_nobf_real.npy', np.real(vk_nobf))
+    np.save('data/vk_ul_nobf_imag.npy', np.imag(vk_nobf))
+    np.save('data/vk_ul_bf_real.npy', np.real(vk_bf))
+    np.save('data/vk_ul_bf_imag.npy', np.imag(vk_bf))
     np.save('data/d_ul_real.npy', np.real(d))
     np.save('data/d_ul_imag.npy', np.imag(d))
     np.save('data/wk_real.npy',np.real(wk))
@@ -330,6 +334,8 @@ if __name__ == "__main__":
     np.save('data/S_theta.npy',S_theta)
 
     M = int(10)
-    d_hat, mse_out = dfe_matlab(vk, d, Ns, Nd, M)
+    d_hat, mse_nobf = dfe_matlab(vk_nobf, d, Ns, Nd, M)
+    d_hat, mse_bf = dfe_matlab(vk_bf, d, Ns, Nd, M)
 
-    print(mse_out)
+    print(mse_nobf)
+    print(mse_bf)

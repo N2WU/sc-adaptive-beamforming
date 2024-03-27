@@ -97,42 +97,66 @@ def dfe_matlab(vk, d, Ns, Nd, M):
 if __name__ == "__main__":
     Ns = 7
     Nd = 3000
-    M = int(63)
+    M = int(10)
     
     # load
-    vk_dl_real = np.load('data/vk_dl_real.npy')
-    vk_dl_imag = np.load('data/vk_dl_imag.npy')
-    vk_dl = vk_dl_real + 1j*vk_dl_imag
+    vk_dl_bf_real = np.load('data/vk_dl_bf_real.npy')
+    vk_dl_bf_imag = np.load('data/vk_dl_bf_imag.npy')
+    vk_dl_bf = vk_dl_bf_real + 1j*vk_dl_bf_imag
+    vk_dl_nobf_real = np.load('data/vk_dl_nobf_real.npy')
+    vk_dl_nobf_imag = np.load('data/vk_dl_nobf_imag.npy')
+    vk_dl_nobf = vk_dl_nobf_real + 1j*vk_dl_nobf_imag
+
     d_dl_real = np.load('data/d_dl_real.npy')
     d_dl_imag = np.load('data/d_dl_imag.npy')
     d_dl = d_dl_real + 1j*d_dl_imag
     d_dl = d_dl.flatten()
 
-    vk_ul_real = np.load('data/vk_ul_real.npy')
-    vk_ul_imag = np.load('data/vk_ul_imag.npy')
-    vk_ul = vk_ul_real + 1j*vk_ul_imag
+    vk_ul_bf_real = np.load('data/vk_ul_bf_real.npy')
+    vk_ul_bf_imag = np.load('data/vk_ul_bf_imag.npy')
+    vk_ul_bf = vk_ul_bf_real + 1j*vk_ul_bf_imag
+    vk_ul_nobf_real = np.load('data/vk_ul_nobf_real.npy')
+    vk_ul_nobf_imag = np.load('data/vk_ul_nobf_imag.npy')
+    vk_ul_nobf = vk_ul_nobf_real + 1j*vk_ul_nobf_imag
+
     d_ul_real = np.load('data/d_ul_real.npy')
     d_ul_imag = np.load('data/d_ul_imag.npy')
     d_ul = d_ul_real + 1j*d_ul_imag
     d_ul = d_ul.flatten()
 
     # DFE
-    d_hat_ul, mse_ul = dfe_matlab(vk_ul,d_ul,Ns,Nd,M) 
-    d_hat_dl, mse_dl = dfe_matlab(vk_dl,d_dl,Ns,Nd,M) 
+    d_hat_ul_bf, mse_ul_bf = dfe_matlab(vk_ul_bf,d_ul,Ns,Nd,M)
+    d_hat_ul_nobf, mse_ul_nobf = dfe_matlab(vk_ul_nobf,d_ul,Ns,Nd,M) 
+
+    d_hat_dl_bf, mse_dl_bf = dfe_matlab(vk_dl_bf,d_dl,Ns,Nd,M)
+    d_hat_dl_nobf, mse_dl_nobf = dfe_matlab(vk_dl_nobf,d_dl,Ns,Nd,M)  
 
     # uplink constellation diagram
     plt.subplot(1, 2, 1)
-    plt.scatter(np.real(d_hat_ul), np.imag(d_hat_ul), marker='x')
+    plt.scatter(np.real(d_hat_ul_nobf), np.imag(d_hat_ul_nobf), marker='x')
     plt.axis('square')
     plt.axis([-2, 2, -2, 2])
-    plt.title(f'Uplink QPSK Constellation')
+    plt.title(f'Uplink QPSK Constellation, No Beamforming')
+    # uplink constellation diagram
+    plt.subplot(1, 2, 2)
+    plt.scatter(np.real(d_hat_dl_bf), np.imag(d_hat_dl_bf), marker='x')
+    plt.axis('square')
+    plt.axis([-2, 2, -2, 2])
+    plt.title(f'Uplink QPSK Constellation, Beamforming') 
+    plt.show()
 
     # downlink constellation diagram
-    plt.subplot(1, 2, 2)
-    plt.scatter(np.real(d_hat_dl), np.imag(d_hat_dl), marker='x')
+    plt.subplot(1, 2, 1)
+    plt.scatter(np.real(d_hat_ul_nobf), np.imag(d_hat_ul_nobf), marker='x')
     plt.axis('square')
     plt.axis([-2, 2, -2, 2])
-    plt.title(f'Downlink QPSK Constellation') 
+    plt.title(f'Downlink QPSK Constellation, No Beamforming')
+    # downlink constellation diagram
+    plt.subplot(1, 2, 2)
+    plt.scatter(np.real(d_hat_dl_bf), np.imag(d_hat_dl_bf), marker='x')
+    plt.axis('square')
+    plt.axis([-2, 2, -2, 2])
+    plt.title(f'Downlink QPSK Constellation, Beamforming') 
     plt.show()
 
     # s(theta)
@@ -148,11 +172,14 @@ if __name__ == "__main__":
     plt.axvline(x=deg_ax[est_deg], linestyle="--", color="blue")
     plt.text(deg_ax[est_deg], np.max(S_theta), f'Est Angle={deg_ax[est_deg]}')
     #plt.text(true_angle, np.max(S_theta)*1e-5, f'True Angle={true_angle}')
-    plt.title(f'S(Theta) Open Air, M={12}, B = 3.9 kHz, d0 =5cm')
+    plt.title(r'S(\theta) Open Air, M={12}, B = 3.9 kHz, d0 =5cm')
     plt.show() 
 
     # uplink/downlink MSE (could probably re-run with iterations)
-    print("Uplink MSE: ", mse_ul)
-    print("Downlink MSE: ", mse_dl) 
+    print("Uplink MSE, NoBF: ", mse_ul_nobf)
+    print("Uplink MSE, BF: ", mse_ul_bf)
+    
+    print("Downlink MSE, NoBF: ", mse_dl_nobf)
+    print("Downlink MSE, BF: ", mse_dl_bf)
 
 
