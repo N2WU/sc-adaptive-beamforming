@@ -107,8 +107,8 @@ def downlink(v_dl,wk,Fs,fs,fc,n_rx,n_tx):
         delvals = 0 # don't adjust with xcorr if it would otherwise ruin signal
     vp1s = vps[delvals:delvals+len(up)]
     fdes,_,_ = fdop(vp1s,up,fs,12)
-    v_single = v_single*np.exp(-1j*2*np.pi*np.arange(len(v_single))*fdes*Ts)
-    v_single = sg.resample_poly(v_single,np.rint(10**4),np.rint((1/(1+fdes/fc))*(10**4)))
+    #v_single = v_single*np.exp(-1j*2*np.pi*np.arange(len(v_single))*fdes*Ts)
+    #v_single = sg.resample_poly(v_single,np.rint(10**4),np.rint((1/(1+fdes/fc))*(10**4)))
     
     v_single = v_single[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
     v_single = sg.resample_poly(v_single,2,Ns)
@@ -127,88 +127,87 @@ def dec4psk(x):
     return d
 
 def dfe_matlab(vk, d, Ns, Nd, M): 
-        K = len(vk[:,0]) # maximum
-        Ns = 2
-        N = int(6 * Ns)
-        # M = np.rint(0)
-        delta = 10**(-3)
-        Nt = 4*(N+M)
-        FS = 2
-        Kf1 = 0.001
-        Kf2 = Kf1/10
-        Lf1 = 1
-        L = 0.98
-        P = np.eye(int(K*N+M))/delta
-        Lbf = 0.99
-        Nplus = 4
+    K = len(vk[:,0]) # maximum
+    Ns = 2
+    N = int(6 * Ns)
+    delta = 10**(-3)
+    Nt = 4*(N+M)
+    FS = 2
+    Kf1 = 0.001
+    Kf2 = Kf1/10
+    Lf1 = 1
+    L = 0.99
+    P = np.eye(int(K*N+M))/delta
+    Lbf = 0.99
+    Nplus = 6
 
-        v = vk[:K,]
+    v = vk
 
-        f = np.zeros((Nd,K),dtype=complex)
-        
-        a = np.zeros(int(K*N), dtype=complex)
-        b = np.zeros(M, dtype=complex)
-        c = np.append(a, -b)
-        p = np.zeros(int(K),dtype=complex)
-        d_tilde = np.zeros(M, dtype=complex)
-        Sf = np.zeros(K)
-        x = np.zeros((K,N), dtype=complex)
-        et = np.zeros(Nd, dtype=complex)
-        d_hat = np.zeros_like(d, dtype=complex)
+    f = np.zeros((Nd,K),dtype=complex)
 
-        for n in range(Nd-1):
-            nb = (n) * Ns + (Nplus - 1) * Ns
-            xn = v[
-                :, int(nb + np.ceil(Ns / FS / 2)-1) : int(nb + Ns)
-                : int(Ns / FS)
-            ]
-            for k in range(K):
-               xn[k,:] *= np.exp(-1j * f[n,k])
-            xn = np.fliplr(xn)
-            x = np.concatenate((xn, x), axis=1)
-            x = x[:,:N] # in matlab, this appends zeros
+    a = np.zeros(int(K*N), dtype=complex)
+    b = np.zeros(M, dtype=complex)
+    c = np.append(a, -b)
+    p = np.zeros(int(K),dtype=complex)
+    d_tilde = np.zeros(M, dtype=complex)
+    Sf = np.zeros(K)
+    x = np.zeros((K,N), dtype=complex)
+    et = np.zeros(Nd, dtype=complex)
+    d_hat = np.zeros_like(d, dtype=complex)
 
-            for k in range(K):
-                p[k] = np.inner(x[k,:], np.conj(a[(k*N):(k+1)*N]))
-            psum = p.sum()
-            #print(psum)
+    for n in range(Nd-1):
+        nb = (n) * Ns + (Nplus - 1) * Ns
+        xn = v[
+            :, int(nb + np.ceil(Ns / FS / 2)-1) : int(nb + Ns)
+            : int(Ns / FS)
+        ]
+        for k in range(K):
+            xn[k,:] *= np.exp(-1j * f[n,k])
+        xn = np.fliplr(xn)
+        x = np.concatenate((xn, x), axis=1)
+        x = x[:,:N] # in matlab, this appends zeros
 
-            q = np.inner(d_tilde, b.conj())
-            d_hat[n] = psum - q
+        for k in range(K):
+            p[k] = np.inner(x[k,:], np.conj(a[(k*N):(k+1)*N]))
+        psum = p.sum()
+        #print(psum)
 
-            if n > Nt:
-                d[n] = dec4psk(d_hat[n])
+        q = np.inner(d_tilde, b.conj())
+        d_hat[n] = psum - q
 
-            e = d[n]- d_hat[n]
-            et[n] = np.abs(e ** 2)
+        if n > Nt:
+            d[n] = dec4psk(d_hat[n])
 
-            # PLL
-            phi = np.imag(p * np.conj(p+e))
-            Sf = Sf + phi
-            f[n+1,:] = f[n,:] + Kf1*phi + Kf2*Sf
+        e = d[n]- d_hat[n]
+        et[n] = np.abs(e ** 2)
 
-            y = np.reshape(x,int(K*N))
-            y = np.append(y,d_tilde)
+        # PLL
+        phi = np.imag(p * np.conj(p+e))
+        Sf = Sf + phi
+        f[n+1,:] = f[n,:] + Kf1*phi + Kf2*Sf
 
-            # RLS
-            k = (
-                np.matmul(P, y) / L
-                / (1 + np.matmul(np.matmul(y.conj(), P), y) / L)
-            )
-            c += k * np.conj(e)
-            P = P / L - np.matmul(np.outer(k, y.conj()), P) / L
+        y = np.reshape(x,int(K*N))
+        y = np.append(y,d_tilde)
 
-            a = c[:int(K*N)]
-            b = -c[int(K*N):int(K*N+M)]
-            d_tilde = np.append(d[n], d_tilde)
-            d_tilde = d_tilde[:M]
-
-        mse = 10 * np.log10(
-            np.mean(np.abs(d[Nt : -1 ] - d_hat[Nt : -1]) ** 2)
+        # RLS
+        k = (
+            np.matmul(P, y) / L
+            / (1 + np.matmul(np.matmul(y.conj(), P), y) / L)
         )
-        if np.isnan(mse):
-            mse = 100
-        return d_hat[Nt : -1], mse, #n_err, n_training
+        c += k * np.conj(e)
+        P = P / L - np.matmul(np.outer(k, y.conj()), P) / L
+
+        a = c[:int(K*N)]
+        b = -c[int(K*N):int(K*N+M)]
+        d_tilde = np.append(d[n], d_tilde)
+        d_tilde = d_tilde[:M]
+
+    mse = 10 * np.log10(
+        np.mean(np.abs(d[Nt : -1 ] - d_hat[Nt : -1]) ** 2)
+    )
+    if np.isnan(mse):
+        mse = 100
+    return d_hat[Nt : -1], mse, #n_err, n_training
 
 if __name__ == "__main__":
     n_tx = 12

@@ -86,7 +86,7 @@ def uplink(v,Fs,fs,fc,n_rx,bf):
     s_tx = s_tx.reshape(-1,1) 
 
     r = testbed(s_tx,1,n_rx,Fs) # s-by-nrx
-    n_path = 1
+    n_path = 2
     d0 = 0.05 
     c = 343
     M = n_rx
@@ -172,8 +172,9 @@ def uplink(v,Fs,fs,fc,n_rx,bf):
         if lendiff > 0:
             vp1 = np.append(vp1, np.zeros(lendiff))
         fde,_,_ = fdop(vp1,up,fs,12)
-        v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
-        v = sg.resample_poly(v,np.rint(10**4),np.rint((1/(1+fde/fc))*(10**4)))
+        #if bf==0:
+            #v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
+            #v = sg.resample_poly(v,np.rint(10**4),np.rint((1/(1+fde/fc))*(10**4)))
         
         v = v[delval:delval+len(u)]
         v = v[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
@@ -208,22 +209,21 @@ def dfe_matlab(vk, d, Ns, Nd, M):
     K = len(vk[:,0]) # maximum
     Ns = 2
     N = int(6 * Ns)
-    # M = np.rint(0)
     delta = 10**(-3)
     Nt = 4*(N+M)
     FS = 2
     Kf1 = 0.001
     Kf2 = Kf1/10
     Lf1 = 1
-    L = 0.98
+    L = 0.99
     P = np.eye(int(K*N+M))/delta
     Lbf = 0.99
-    Nplus = 4
+    Nplus = 6
 
-    v = vk[:K,]
+    v = vk
 
     f = np.zeros((Nd,K),dtype=complex)
-    
+
     a = np.zeros(int(K*N), dtype=complex)
     b = np.zeros(M, dtype=complex)
     c = np.append(a, -b)
@@ -325,9 +325,7 @@ if __name__ == "__main__":
     v = np.copy(u)
 
     vk_nobf, _, _ = uplink(v,Fs,fs,fc,n_rx,0)
-
     vk_bf, wk, S_theta = uplink(v,Fs,fs,fc,n_rx,1)
-
     np.save('data/vk_ul_nobf_real.npy', np.real(vk_nobf))
     np.save('data/vk_ul_nobf_imag.npy', np.imag(vk_nobf))
     np.save('data/vk_ul_bf_real.npy', np.real(vk_bf))
