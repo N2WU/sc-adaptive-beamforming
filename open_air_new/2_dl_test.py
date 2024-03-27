@@ -253,15 +253,14 @@ if __name__ == "__main__":
     wk_real = np.load('data/wk_real.npy')
     wk_imag = np.load('data/wk_imag.npy')
     wk = wk_real + 1j*wk_imag
-    wk /= np.sqrt(pwr(wk))
 
     # now beamforming and weights
     d0 = 0.05
     c = 343
-    theta_m = [-10, -17.3]
+    theta_m = [-10, -20]
     n_path = 2
     M = n_tx
-
+    """
     freqs = np.load('data/freqs.npy')
     index = np.where((freqs >= fc-R/2) & (freqs < fc+R/2))[0]
     yk_real = np.load('data/yk_real.npy')
@@ -284,7 +283,7 @@ if __name__ == "__main__":
             e_pu[i, 0] = 1
             wk = Sk @ np.linalg.inv(Sk.conj().T @ Sk) @ e_pu
             y_tilde[k, i] = wk.conj().T @ yk[k, :].T
-
+    """
     wk /= np.sqrt(pwr(wk))
     vk_bf = downlink(v_dl,wk,Fs,fs,fc,n_rx,n_tx)
     

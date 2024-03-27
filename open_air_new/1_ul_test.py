@@ -86,7 +86,7 @@ def uplink(v,Fs,fs,fc,n_rx,bf):
     s_tx = s_tx.reshape(-1,1) 
 
     r = testbed(s_tx,1,n_rx,Fs) # s-by-nrx
-    n_path = 2
+    n_path = 3
     d0 = 0.05 
     c = 343
     M = n_rx
