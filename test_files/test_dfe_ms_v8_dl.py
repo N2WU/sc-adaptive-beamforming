@@ -395,9 +395,9 @@ if __name__ == "__main__":
     mse = np.zeros_like(snr_db)
     mse_dl = np.zeros_like(mse)
     d_hat_cum = np.zeros((len(mse),Nd-88-1), dtype=complex) # has to change if Nt changes :(
-    d_hat_dl_cum = np.zeros((len(mse),Nd-48-1),dtype=complex)
+    d_hat_dl_cum = np.zeros((len(mse),Nd-88-1),dtype=complex)
 
-    d_hat_dl_cum_wk = np.zeros((len(mse),Nd-48-1),dtype=complex)
+    d_hat_dl_cum_wk = np.zeros((len(mse),Nd-88-1),dtype=complex)
     mse_dl_wk = np.zeros_like(mse)
 
     mse_wk = np.zeros_like(mse)
@@ -453,13 +453,13 @@ if __name__ == "__main__":
                 if bf==1:
                     wk_dl = np.copy(wk)
                     v_single = transmit_dl(v_dl,wk_dl,snr,Fs,fs,fc,n_rx,d0)
-                    d_hat_dl_wk, mse_out_dl_wk = dfe_matlab(v_single, d, Ns, Nd, int(0))
+                    d_hat_dl_wk, mse_out_dl_wk = dfe_matlab(v_single, d, Ns, Nd, int(10))
                     mse_dl_wk[ind] = mse_out_dl_wk
                     d_hat_dl_cum_wk[ind,:] = d_hat_dl_wk
                 elif bf == 0:
                     wk_dl = np.ones_like(wk)
                     v_single = transmit_dl(v_dl,wk_dl,snr,Fs,fs,fc,n_rx,d0)
-                    d_hat_dl, mse_out_dl = dfe_matlab(v_single, d, Ns, Nd, int(0))
+                    d_hat_dl, mse_out_dl = dfe_matlab(v_single, d, Ns, Nd, int(10))
                     mse_dl[ind] = mse_out_dl
                     d_hat_dl_cum[ind,:] = d_hat_dl
 
@@ -472,12 +472,12 @@ if __name__ == "__main__":
 
     if downlink:
         fig1, ax1 = plt.subplots()
-        ax1.plot(snr_db,mse_dl,'-o',color='blue')
+        #ax1.plot(snr_db,mse_dl,'-o',color='blue')
         ax1.plot(snr_db,mse_dl_wk,'-o',color='orange')
         ax1.set_xlabel(r'SNR (dB)')
         ax1.set_ylabel('MSE (dB)')
         ax1.set_title('MSE vs SNR for QPSK Signal DL')
-        ax1.legend(["No Beamform","Beamform DL"])
+        #ax1.legend(["No Beamform","Beamform DL"])
         
         fig2,axs2 = plt.subplots(2, 2)
         for ind in range(len(snr_db)):
