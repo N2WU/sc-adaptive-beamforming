@@ -392,7 +392,8 @@ if __name__ == "__main__":
     # s /= np.max(np.abs(s))
 
     snr_db = np.array([10]) #np.array([5, 8, 12, 15])
-    N_FF = np.array([25, 20, 15, 10])
+    N_FF = np.array([50, 40, 30, 20])
+    #N_FB = np.array([20, 15, 10, 5])
     mse = np.zeros_like(N_FF)
     mse_dl = np.zeros_like(mse)
     d_hat_cum = np.zeros((len(mse),Nd-88-1), dtype=complex) # has to change if Nt changes :(
@@ -416,6 +417,7 @@ if __name__ == "__main__":
         for bf in beamform:
             snr = 10**(0.1 * snr_db)
             N = N_FF[ind]
+            FB = 30 #N_FB[ind]
             d0 = el_spacing
             n_rx = el_num
             v = np.copy(u)
@@ -455,24 +457,25 @@ if __name__ == "__main__":
                 if bf==1:
                     wk_dl = np.copy(wk)
                     v_single = transmit_dl(v_dl,wk_dl,snr,Fs,fs,fc,n_rx,d0)
-                    d_hat_dl_wk, mse_out_dl_wk = dfe_matlab(v_single, d, N, Nd, int(10))
+                    d_hat_dl_wk, mse_out_dl_wk = dfe_matlab(v_single, d, N, Nd, FB)
                     mse_dl_wk[ind] = mse_out_dl_wk
                     d_hat_dl_cum_wk.append(d_hat_dl_wk)
                 elif bf == 0:
-                    wk_dl = np.ones_like(wk)
+                    wk_dl = np.ones_like(wk)/n_rx
                     v_single = transmit_dl(v_dl,wk_dl,snr,Fs,fs,fc,n_rx,d0)
-                    d_hat_dl, mse_out_dl = dfe_matlab(v_single, d, 12, Nd, int(10))
+                    d_hat_dl, mse_out_dl = dfe_matlab(v_single, d, 12, Nd, FB)
                     mse_dl[ind] = mse_out_dl
                     d_hat_dl_cum.append(d_hat_dl)
-
+    """
     fig, ax = plt.subplots()
     ax.plot(N_FF,mse_wk,'-o',color="orange")
     ax.set_xlabel(r'N_FF')
     ax.set_ylabel('SNR (db)')
     ax.set_title(f'UL MSE for 2-path channel, M={n_rx}, d0={d0}, fc={fc}')
     #ax.legend(['MRC Only','Beamforming'])
-
+    """
     if downlink:
+        """
         fig1, ax1 = plt.subplots()
         #ax1.plot(snr_db,mse_dl,'-o',color='blue')
         ax1.plot(N_FF,mse_dl_wk,'-o',color='orange')
@@ -480,7 +483,8 @@ if __name__ == "__main__":
         ax1.set_ylabel('MSE (dB)')
         ax1.set_title('MSE vs FF Taps for QPSK Signal DL')
         #ax1.legend(["No Beamform","Beamform DL"])
-        
+        """
+        """
         fig2,axs2 = plt.subplots(2, 2)
         for ind in range(len(N_FF)):
             plt.subplot(2, 2, int(ind+1))
@@ -492,7 +496,7 @@ if __name__ == "__main__":
             plt.title(f'SNR=10 dB, N_FF={N_FF[ind]}') #(f'd0={d_lambda[ind]}'r'$\lambda$')
             #plt.legend(["No Beamform","Beamform DL"])
         fig2.suptitle('DL QPSK Constellation, 2-path, Varying N_FF, BF')
-
+        """
         fig3,axs3 = plt.subplots(2, 2)
         for ind in range(len(N_FF)):
             plt.subplot(2, 2, int(ind+1))

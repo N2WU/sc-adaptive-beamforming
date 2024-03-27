@@ -166,7 +166,7 @@ if __name__ == "__main__":
     deg_theta = np.linspace(theta_start,theta_end,N_theta)
     S_theta = np.load('data/S_theta.npy')
     est_deg = np.argmax(S_theta)
-    deg_ax = np.flip(deg_theta)
+    deg_ax = deg_theta
     plt.plot(deg_ax,S_theta)
     #plt.axvline(x=true_angle, linestyle="--", color="red")
     plt.axvline(x=deg_ax[est_deg], linestyle="--", color="blue")
