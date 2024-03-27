@@ -86,7 +86,7 @@ def uplink(v,Fs,fs,fc,n_rx,bf):
     s_tx = s_tx.reshape(-1,1) 
 
     r = testbed(s_tx,1,n_rx,Fs) # s-by-nrx
-    n_path = 2
+    n_path = 1
     d0 = 0.05 
     c = 343
     M = n_rx
@@ -172,8 +172,8 @@ def uplink(v,Fs,fs,fc,n_rx,bf):
         if lendiff > 0:
             vp1 = np.append(vp1, np.zeros(lendiff))
         fde,_,_ = fdop(vp1,up,fs,12)
-        #v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
-        #v = sg.resample_poly(v,np.rint(10**4),np.rint((1/(1+fde/fc))*(10**4)))
+        v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
+        v = sg.resample_poly(v,np.rint(10**4),np.rint((1/(1+fde/fc))*(10**4)))
         
         v = v[delval:delval+len(u)]
         v = v[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble

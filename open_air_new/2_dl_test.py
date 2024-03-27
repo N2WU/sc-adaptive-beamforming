@@ -107,8 +107,8 @@ def downlink(v_dl,wk,Fs,fs,fc,n_rx,n_tx):
         delvals = 0 # don't adjust with xcorr if it would otherwise ruin signal
     vp1s = vps[delvals:delvals+len(up)]
     fdes,_,_ = fdop(vp1s,up,fs,12)
-    #v_single = v_single*np.exp(-1j*2*np.pi*np.arange(len(v_single))*fdes*Ts)
-    #v_single = sg.resample_poly(v_single,np.rint(10**4),np.rint((1/(1+fdes/fc))*(10**4)))
+    v_single = v_single*np.exp(-1j*2*np.pi*np.arange(len(v_single))*fdes*Ts)
+    v_single = sg.resample_poly(v_single,np.rint(10**4),np.rint((1/(1+fdes/fc))*(10**4)))
     
     v_single = v_single[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
     v_single = sg.resample_poly(v_single,2,Ns)
