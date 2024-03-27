@@ -154,6 +154,7 @@ def uplink(v,Fs,fs,fc,n_rx):
     # deg_diff = np.abs(true_angle - deg_ax[est_deg])
     
     r_multi = np.copy(y)
+    print(np.shape(r_multi))
     for i in range(len(r_multi[0,:])):
         r = np.squeeze(r_multi[:, i])
         vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
