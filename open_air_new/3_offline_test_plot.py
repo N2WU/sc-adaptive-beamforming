@@ -100,29 +100,31 @@ if __name__ == "__main__":
     M = int(10)
     
     # load
-    vk_dl_bf_real = np.load('data/vk_dl_bf_real.npy')
-    vk_dl_bf_imag = np.load('data/vk_dl_bf_imag.npy')
+    vk_dl_bf_real = np.load('data/archive_03_27_-10deg/vk_dl_bf_real.npy')
+    vk_dl_bf_imag = np.load('data/archive_03_27_-10deg/vk_dl_bf_imag.npy')
     vk_dl_bf = vk_dl_bf_real + 1j*vk_dl_bf_imag
-    vk_dl_nobf_real = np.load('data/vk_dl_nobf_real.npy')
-    vk_dl_nobf_imag = np.load('data/vk_dl_nobf_imag.npy')
+    vk_dl_nobf_real = np.load('data/archive_03_27_-10deg/vk_dl_nobf_real.npy')
+    vk_dl_nobf_imag = np.load('data/archive_03_27_-10deg/vk_dl_nobf_imag.npy')
     vk_dl_nobf = vk_dl_nobf_real + 1j*vk_dl_nobf_imag
 
-    d_dl_real = np.load('data/d_dl_real.npy')
-    d_dl_imag = np.load('data/d_dl_imag.npy')
+    d_dl_real = np.load('data/archive_03_27_-10deg/d_dl_real.npy')
+    d_dl_imag = np.load('data/archive_03_27_-10deg/d_dl_imag.npy')
     d_dl = d_dl_real + 1j*d_dl_imag
     d_dl = d_dl.flatten()
 
-    vk_ul_bf_real = np.load('data/vk_ul_bf_real.npy')
-    vk_ul_bf_imag = np.load('data/vk_ul_bf_imag.npy')
+    vk_ul_bf_real = np.load('data/archive_03_27_0_deg/vk_ul_bf_real.npy')
+    vk_ul_bf_imag = np.load('data/archive_03_27_0_deg/vk_ul_bf_imag.npy')
     vk_ul_bf = vk_ul_bf_real + 1j*vk_ul_bf_imag
-    vk_ul_nobf_real = np.load('data/vk_ul_nobf_real.npy')
-    vk_ul_nobf_imag = np.load('data/vk_ul_nobf_imag.npy')
+    vk_ul_nobf_real = np.load('data/archive_03_27_0_deg/vk_ul_nobf_real.npy')
+    vk_ul_nobf_imag = np.load('data/archive_03_27_0_deg/vk_ul_nobf_imag.npy')
     vk_ul_nobf = vk_ul_nobf_real + 1j*vk_ul_nobf_imag
 
-    d_ul_real = np.load('data/d_ul_real.npy')
-    d_ul_imag = np.load('data/d_ul_imag.npy')
+    d_ul_real = np.load('data/archive_03_27_0_deg/d_ul_real.npy')
+    d_ul_imag = np.load('data/archive_03_27_0_deg/d_ul_imag.npy')
     d_ul = d_ul_real + 1j*d_ul_imag
     d_ul = d_ul.flatten()
+
+    S_theta = np.load('data/archive_03_27_-10deg/S_theta.npy')
 
     # DFE
     d_hat_ul_bf, mse_ul_bf = dfe_matlab(vk_ul_bf,d_ul,Ns,Nd,M)
@@ -164,15 +166,14 @@ if __name__ == "__main__":
     theta_end = 45
     N_theta = 200
     deg_theta = np.linspace(theta_start,theta_end,N_theta)
-    S_theta = np.load('data/S_theta.npy')
     est_deg = np.argmax(S_theta)
-    deg_ax = np.flip(deg_theta)
+    deg_ax = deg_theta
     plt.plot(deg_ax,S_theta)
     #plt.axvline(x=true_angle, linestyle="--", color="red")
     plt.axvline(x=deg_ax[est_deg], linestyle="--", color="blue")
     plt.text(deg_ax[est_deg], np.max(S_theta), f'Est Angle={deg_ax[est_deg]}')
     #plt.text(true_angle, np.max(S_theta)*1e-5, f'True Angle={true_angle}')
-    plt.title(r'S(\theta) Open Air, M={12}, B = 3.9 kHz, d0 =5cm')
+    plt.title(r'S($\theta$) Open Air, M=12, B = 3.9 kHz, d0 =5cm')
     plt.show() 
 
     # uplink/downlink MSE (could probably re-run with iterations)
