@@ -93,12 +93,14 @@ def uplink(v,Fs,fs,fc,n_rx,bf):
     r_fft = np.fft.fft(r, axis=0)
     freqs = np.fft.fftfreq(len(r[:, 0]), 1/fs) # this is the same as 1/Fs with no adjustment
     freqs = freqs*Fs/fs
-
+    np.save('data/freqs.npy', freqs) 
     index = np.where((freqs >= fc-R/2) & (freqs < fc+R/2))[0]
     N = len(index) #uhh???
     if N > 0:
-        fk = freqs[index]       
+        fk = freqs[index]      
         yk = r_fft[index, :]    # N*M
+        np.save('data/yk_real.npy', np.real(yk))
+        np.save('data/yk_imag.npy', np.imag(yk))
         theta_start = -45
         theta_end = 45
         N_theta = 200
