@@ -70,7 +70,7 @@ def testbed(s_tx,n_tx,n_rx,Fs):
         for ch in range(16,16+n_tx):
             tx[:,ch] = s_tx
         print("Transmitting...")
-        rx_raw = sd.playrec(tx * 0.1, samplerate=Fs, blocking=True)
+        rx_raw = sd.playrec(tx * 0.05, samplerate=Fs, blocking=True)
         rx = rx_raw[:,:n_rx]
         print("Received")
     else:
@@ -78,7 +78,7 @@ def testbed(s_tx,n_tx,n_rx,Fs):
         for ch in range(n_tx):
             tx[:,ch] = s_tx[:,ch]
         print("Transmitting...")
-        rx_raw = sd.playrec(tx * 0.1, samplerate=Fs, blocking=True)
+        rx_raw = sd.playrec(tx * 0.05, samplerate=Fs, blocking=True)
         rx = rx_raw[:,16:16+n_rx] #testbed specific
         print("Received")
     return rx
@@ -254,9 +254,9 @@ if __name__ == "__main__":
     wk_imag = np.load('data/wk_imag.npy')
     wk = wk_real + 1j*wk_imag
 
-    vk_nobf = downlink(v_dl,np.ones_like(wk)/n_tx,Fs,fs,fc,n_rx,n_tx)
+    vk_nobf = downlink(v_dl,np.ones_like(wk),Fs,fs,fc,n_rx,n_tx)
 
-    vk_bf = downlink(v_dl,wk,Fs,fs,fc,n_rx,n_tx)
+    vk_bf = downlink(v_dl,10*(wk),Fs,fs,fc,n_rx,n_tx)
 
     np.save('data/vk_dl_nobf_real.npy', np.real(vk_nobf))
     np.save('data/vk_dl_nobf_imag.npy', np.imag(vk_nobf))
