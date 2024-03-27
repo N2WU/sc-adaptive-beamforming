@@ -187,7 +187,7 @@ def uplink(v,Fs,fs,fc,n_rx):
             v_multichannel = np.vstack((v_multichannel,v))
             lenvm = len(v_multichannel[0,:])
     vk = np.copy(v_multichannel)
-    return vk, wk
+    return vk, wk, S_theta
 
 def dec4psk(x):
     xr = np.real(x)
@@ -318,7 +318,7 @@ if __name__ == "__main__":
 
     v = np.copy(u)
 
-    vk, wk = uplink(v,Fs,fs,fc,n_rx)
+    vk, wk, S_theta = uplink(v,Fs,fs,fc,n_rx)
 
     np.save('data/vk_ul_real.npy', np.real(vk))
     np.save('data/vk_ul_imag.npy', np.imag(vk))
@@ -326,6 +326,7 @@ if __name__ == "__main__":
     np.save('data/d_ul_imag.npy', np.imag(d))
     np.save('data/wk_real.npy',np.real(wk))
     np.save('data/wk_imag.npy',np.imag(wk))
+    np.save('data/S_theta.npy',S_theta)
 
     M = int(10)
     d_hat, mse_out = dfe_matlab(vk, d, Ns, Nd, M)
