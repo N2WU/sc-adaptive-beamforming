@@ -139,7 +139,7 @@ if __name__ == "__main__":
     plt.title(f'Uplink QPSK Constellation, No Beamforming')
     # uplink constellation diagram
     plt.subplot(1, 2, 2)
-    plt.scatter(np.real(d_hat_dl_bf), np.imag(d_hat_dl_bf), marker='x')
+    plt.scatter(np.real(d_hat_ul_bf), np.imag(d_hat_ul_bf), marker='x')
     plt.axis('square')
     plt.axis([-2, 2, -2, 2])
     plt.title(f'Uplink QPSK Constellation, Beamforming') 
@@ -147,7 +147,7 @@ if __name__ == "__main__":
 
     # downlink constellation diagram
     plt.subplot(1, 2, 1)
-    plt.scatter(np.real(d_hat_ul_nobf), np.imag(d_hat_ul_nobf), marker='x')
+    plt.scatter(np.real(d_hat_dl_nobf), np.imag(d_hat_dl_nobf), marker='x')
     plt.axis('square')
     plt.axis([-2, 2, -2, 2])
     plt.title(f'Downlink QPSK Constellation, No Beamforming')
