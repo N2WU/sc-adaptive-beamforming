@@ -103,11 +103,11 @@ if __name__ == "__main__":
     M = int(10)
     
     # load
-    vk_dl_bf_real = np.load('data/archive_03_27_-10deg/vk_dl_bf_real.npy')
-    vk_dl_bf_imag = np.load('data/archive_03_27_-10deg/vk_dl_bf_imag.npy')
+    vk_dl_nobf_real = np.load('data/archive_03_27_-10deg/vk_dl_bf_real.npy')
+    vk_dl_nobf_imag = np.load('data/archive_03_27_-10deg/vk_dl_bf_imag.npy')
 
-    vk_dl_nobf_real = np.load('data/archive_03_27_-10deg/vk_dl_nobf_real.npy')
-    vk_dl_nobf_imag = np.load('data/archive_03_27_-10deg/vk_dl_nobf_imag.npy')
+    vk_dl_bf_real = np.load('data/archive_03_27_-10deg/vk_dl_nobf_real.npy')
+    vk_dl_bf_imag = np.load('data/archive_03_27_-10deg/vk_dl_nobf_imag.npy')
     vk_dl_nobf = vk_dl_nobf_real + 1j*vk_dl_nobf_imag
     vk_dl_bf = vk_dl_bf_real + 1j*vk_dl_bf_imag
 
@@ -134,10 +134,21 @@ if __name__ == "__main__":
     d_hat_ul_bf, mse_ul_bf = dfe_matlab(vk_ul_bf,d_ul,N,Nd,M)
     d_hat_ul_nobf, mse_ul_nobf = dfe_matlab(vk_ul_nobf,d_ul,N,Nd,M) 
 
-    d_hat_dl_nobf, mse_dl_nobf = dfe_matlab(vk_dl_nobf,d_dl,int(12),Nd,M)  
-    d_hat_dl_bf, mse_dl_bf = dfe_matlab(vk_dl_bf,d_dl,int(12),Nd,M)
+    N = np.arange(8,50,1)
+    mse = np.zeros((len(N),2))
+    for j,i in enumerate(N):
+        d_hat_dl_nobf, mse_dl_nobf = dfe_matlab(vk_dl_nobf,d_dl,int(i),Nd,M) 
+        mse[j,0] = mse_dl_nobf
+        d_hat_dl_bf, mse_dl_bf = dfe_matlab(vk_dl_bf,d_dl,int(i-7),Nd,M)
+        mse[j,1] = mse_dl_bf
+
+    plt.plot(N,mse[:,0], '-o')
+    plt.plot(N-7,mse[:,1], '-o')
+    plt.legend(["nobf","bf"])
+    plt.show()
 
     # uplink constellation diagram
+    """
     plt.subplot(1, 2, 1)
     plt.scatter(np.real(d_hat_ul_nobf), np.imag(d_hat_ul_nobf), marker='x')
     plt.axis('square')
@@ -150,22 +161,23 @@ if __name__ == "__main__":
     plt.axis([-2, 2, -2, 2])
     plt.title(f'Uplink QPSK Constellation, Beamforming') 
     plt.show()
-
+    """
     # downlink constellation diagram
     plt.subplot(1, 2, 1)
     plt.scatter(np.real(d_hat_dl_nobf), np.imag(d_hat_dl_nobf), marker='x')
     plt.axis('square')
     plt.axis([-2, 2, -2, 2])
-    plt.title(f'Downlink QPSK Constellation, No Beamforming')
+    plt.title(f'No BF, MSE={"{:.2f}".format(mse_dl_nobf)}, N_FF = 8')
     # downlink constellation diagram
     plt.subplot(1, 2, 2)
     plt.scatter(np.real(d_hat_dl_bf), np.imag(d_hat_dl_bf), marker='x')
     plt.axis('square')
     plt.axis([-2, 2, -2, 2])
-    plt.title(f'Downlink QPSK Constellation, Beamforming') 
+    plt.title(f'BF, MSE={"{:.2f}".format(mse_dl_bf)} N_FF = 8') 
     plt.show()
 
     # s(theta)
+    """
     theta_start = -45
     theta_end = 45
     N_theta = 200
@@ -184,7 +196,7 @@ if __name__ == "__main__":
     # uplink/downlink MSE (could probably re-run with iterations)
     print("Uplink MSE, NoBF: ", mse_ul_nobf)
     print("Uplink MSE, BF: ", mse_ul_bf)
-    
+    """
     print("Downlink MSE, NoBF: ", mse_dl_nobf)
     print("Downlink MSE, BF: ", mse_dl_bf)
 
