@@ -1,6 +1,7 @@
 import numpy as np
 import scipy.signal as sg
 import matplotlib.pyplot as plt
+import gc
 
 def dec4psk(x):
     xr = np.real(x)
@@ -11,10 +12,10 @@ def dec4psk(x):
     d = d/np.sqrt(2)
     return d
 
-def dfe_matlab(vk, d, Ns, Nd, M): 
+def dfe_matlab(vk, d, N, Nd, M): 
     K = len(vk[:,0]) # maximum
     Ns = 2
-    N = int(6 * Ns)
+    #N = int(6 * Ns)
     delta = 10**(-3)
     Nt = 4*(N+M)
     FS = 2
@@ -92,46 +93,49 @@ def dfe_matlab(vk, d, Ns, Nd, M):
     )
     if np.isnan(mse):
         mse = 100
+    del(xn,a,b,c,e,et,d_tilde,y,x)
+    gc.collect()
     return d_hat[Nt : -1], mse, #n_err, n_training
 
 if __name__ == "__main__":
-    Ns = 7
+    N = 6
     Nd = 3000
     M = int(10)
     
     # load
     vk_dl_bf_real = np.load('data/archive_03_27_-10deg/vk_dl_bf_real.npy')
     vk_dl_bf_imag = np.load('data/archive_03_27_-10deg/vk_dl_bf_imag.npy')
-    vk_dl_bf = vk_dl_bf_real + 1j*vk_dl_bf_imag
+
     vk_dl_nobf_real = np.load('data/archive_03_27_-10deg/vk_dl_nobf_real.npy')
     vk_dl_nobf_imag = np.load('data/archive_03_27_-10deg/vk_dl_nobf_imag.npy')
     vk_dl_nobf = vk_dl_nobf_real + 1j*vk_dl_nobf_imag
+    vk_dl_bf = vk_dl_bf_real + 1j*vk_dl_bf_imag
 
     d_dl_real = np.load('data/archive_03_27_-10deg/d_dl_real.npy')
     d_dl_imag = np.load('data/archive_03_27_-10deg/d_dl_imag.npy')
     d_dl = d_dl_real + 1j*d_dl_imag
     d_dl = d_dl.flatten()
 
-    vk_ul_bf_real = np.load('data/archive_03_27_0_deg/vk_ul_bf_real.npy')
-    vk_ul_bf_imag = np.load('data/archive_03_27_0_deg/vk_ul_bf_imag.npy')
+    vk_ul_bf_real = np.load('data/archive_03_27_-10deg/vk_ul_bf_real.npy')
+    vk_ul_bf_imag = np.load('data/archive_03_27_-10deg/vk_ul_bf_imag.npy')
     vk_ul_bf = vk_ul_bf_real + 1j*vk_ul_bf_imag
-    vk_ul_nobf_real = np.load('data/archive_03_27_0_deg/vk_ul_nobf_real.npy')
-    vk_ul_nobf_imag = np.load('data/archive_03_27_0_deg/vk_ul_nobf_imag.npy')
+    vk_ul_nobf_real = np.load('data/archive_03_27_-10deg/vk_ul_nobf_real.npy')
+    vk_ul_nobf_imag = np.load('data/archive_03_27_-10deg/vk_ul_nobf_imag.npy')
     vk_ul_nobf = vk_ul_nobf_real + 1j*vk_ul_nobf_imag
 
-    d_ul_real = np.load('data/archive_03_27_0_deg/d_ul_real.npy')
-    d_ul_imag = np.load('data/archive_03_27_0_deg/d_ul_imag.npy')
+    d_ul_real = np.load('data/archive_03_27_-10deg/d_ul_real.npy')
+    d_ul_imag = np.load('data/archive_03_27_-10deg/d_ul_imag.npy')
     d_ul = d_ul_real + 1j*d_ul_imag
     d_ul = d_ul.flatten()
 
-    S_theta = np.load('data/archive_03_27_-10deg/S_theta.npy')
+    S_theta = np.load('data/archive_03_27_-10deg/S_theta.npy') #archive_03_27_-10deg/
 
     # DFE
-    d_hat_ul_bf, mse_ul_bf = dfe_matlab(vk_ul_bf,d_ul,Ns,Nd,M)
-    d_hat_ul_nobf, mse_ul_nobf = dfe_matlab(vk_ul_nobf,d_ul,Ns,Nd,M) 
+    d_hat_ul_bf, mse_ul_bf = dfe_matlab(vk_ul_bf,d_ul,N,Nd,M)
+    d_hat_ul_nobf, mse_ul_nobf = dfe_matlab(vk_ul_nobf,d_ul,N,Nd,M) 
 
-    d_hat_dl_bf, mse_dl_bf = dfe_matlab(vk_dl_bf,d_dl,Ns,Nd,M)
-    d_hat_dl_nobf, mse_dl_nobf = dfe_matlab(vk_dl_nobf,d_dl,Ns,Nd,M)  
+    d_hat_dl_nobf, mse_dl_nobf = dfe_matlab(vk_dl_nobf,d_dl,int(12),Nd,M)  
+    d_hat_dl_bf, mse_dl_bf = dfe_matlab(vk_dl_bf,d_dl,int(12),Nd,M)
 
     # uplink constellation diagram
     plt.subplot(1, 2, 1)
@@ -172,8 +176,9 @@ if __name__ == "__main__":
     #plt.axvline(x=true_angle, linestyle="--", color="red")
     plt.axvline(x=deg_ax[est_deg], linestyle="--", color="blue")
     plt.text(deg_ax[est_deg], np.max(S_theta), f'Est Angle={deg_ax[est_deg]}')
+    plt.xlim((-35,35))
     #plt.text(true_angle, np.max(S_theta)*1e-5, f'True Angle={true_angle}')
-    plt.title(r'S($\theta$) Open Air, M=12, B = 3.9 kHz, d0 =5cm')
+    plt.title(r'S($\theta$) Open Air, M=12, d0=5cm')
     plt.show() 
 
     # uplink/downlink MSE (could probably re-run with iterations)
