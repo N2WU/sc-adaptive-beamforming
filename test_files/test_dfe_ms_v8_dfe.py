@@ -203,7 +203,7 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
         #v = sg.resample_poly(vr,1,4)
         vp = v[:len(up)+Nz*Ns]
         delval,xvals = fdel(vp,up)
-        delvals[i,:] = xvals
+        #delvals[i,:] = xvals
         vp1 = vp[delval:delval+len(up)]
         lendiff = len(up)-len(vp1)
         if lendiff > 0:
@@ -296,7 +296,7 @@ def dfe_matlab(vk, d, Ns, Nd, M):
     Lbf = 0.99
     Nplus = 6
 
-    v = vk
+    v = np.copy(vk)
 
     f = np.zeros((Nd,K),dtype=complex)
     
@@ -364,6 +364,107 @@ def dfe_matlab(vk, d, Ns, Nd, M):
         mse = 100
     return d_hat[Nt : -1], mse, #n_err, n_training
 
+def lineq(vk, d, Ns, Nd): 
+    M = 0
+    K = len(vk[:,0]) # maximum
+    Ns = 2
+    N = int(6 * Ns)
+    delta = 0 #10**(-3)
+    Nt = 4*(N+M)
+    FS = 2
+    Kf1 = 0.000
+    L = 0.99
+    P = np.eye(int(K*N+M))/delta
+    Lbf = 0.99
+    Nplus = 6
+
+    v = np.copy(vk)
+
+    f = np.zeros((Nd,K),dtype=complex)
+    
+    a = np.zeros(int(K*N), dtype=complex)
+    #b = np.zeros(M, dtype=complex)
+    #c = np.append(a, -b)
+    p = np.zeros(int(K),dtype=complex)
+    #d_tilde = np.zeros(M, dtype=complex)
+    Sf = np.zeros(K)
+    x = np.zeros((K,N), dtype=complex)
+    et = np.zeros(Nd, dtype=complex)
+    d_hat = np.zeros_like(d, dtype=complex)
+
+    for n in range(Nd-1):
+        nb = (n) * Ns + (Nplus - 1) * Ns
+        xn = v[
+            :, int(nb + np.ceil(Ns / FS / 2)-1) : int(nb + Ns)
+            : int(Ns / FS)
+        ]
+
+        x = x[:,:N] # in matlab, this appends zeros
+
+        for k in range(K):
+            p[k] = np.inner(x[k,:], np.conj(a[(k*N):(k+1)*N]))
+        psum = p.sum()
+        #print(psum)
+
+        d_hat[n] = psum
+
+        if n > Nt:
+            d[n] = dec4psk(d_hat[n])
+
+        e = d[n]- d_hat[n]
+        et[n] = np.abs(e ** 2)
+
+
+        y = np.reshape(x,int(K*N))
+
+        # RLS
+        k = (
+            np.matmul(P, y) / L
+            / (1 + np.matmul(np.matmul(y.conj(), P), y) / L)
+        )
+        a += k * np.conj(e)
+        P = P / L - np.matmul(np.outer(k, y.conj()), P) / L
+
+        a = a[:int(K*N)]
+
+    mse = 10 * np.log10(
+        np.mean(np.abs(d[Nt : -1 ] - d_hat[Nt : -1]) ** 2)
+    )
+    if np.isnan(mse):
+        mse = 100
+    return d_hat[Nt : -1], mse, #n_err, n_training
+
+def lms(v,d):
+    Nd = 3000
+    ns = 2
+    Nplus = 6
+    FS = 2
+    n_training = 88
+    d_hat = np.zeros(len(d), dtype=complex)
+    mu = 0.1
+    #v = v.flatten()
+    vn = np.copy(v)
+    for i in np.arange(len(d) - 1, dtype=int):
+        # resample v with fractional spacing
+        nb = (i) * ns + (Nplus - 1) * ns - 1 # basically a sample index
+        v_nt = vn[ int(nb + np.ceil(ns / FS / 2)) : int(nb + ns) 
+            + 1 : int(ns / FS)]
+        if len(v_nt) == 0:
+            v_nt = np.zeros_like(a)
+    # select a' (?)
+        if i==0:
+            a = np.ones_like(v_nt)
+    # calculate d_hat
+        d_hat[i] = np.inner(a,v_nt) #- d[i]
+    # calculate e (use d=dec(d_hat))
+        if i > n_training:
+            d[i] = dec4psk(d_hat[i])
+
+        err = d[i] - d_hat[i]
+    # select a(n+1) with stochastic gradient descent 
+        a += mu*v_nt*err.conj()
+    return d_hat[n_training:-50]
+
 if __name__ == "__main__":
     Nd = 3000
     Nz = 100
@@ -402,7 +503,7 @@ if __name__ == "__main__":
     s = np.real(us * np.exp(2j * np.pi * fc * np.arange(len(us)) / Fs))
     # s /= np.max(np.abs(s))
 
-    snr_db = np.array([5, 5, 5]) #, 15])
+    snr_db = np.array([15, 15]) #, 15])
     mse = np.zeros_like(snr_db)
     mse_dl = np.zeros_like(snr_db)
     d_hat_cum = np.zeros((len(snr_db),Nd-88-1), dtype=complex) # has to change if Nt changes :(
@@ -432,25 +533,23 @@ if __name__ == "__main__":
         v /= np.sqrt(pwr(v))
         vk, wk, deg_diff = transmit(v,snr,Fs,fs,fc,n_rx,d0,True) # this already does rough phase alignment
         deg_diff_cum[ind] = deg_diff
-        if ind==0:
-            d_hat1, mse_out = dfe_matlab(vk, d, int(0), Nd, int(0))
         if ind==1:
-            M = int(0)
-            d_hat2, mse_out = dfe_matlab(vk, d, Ns, Nd, M)
-        if ind==2:
+            d_hat1, mse_out = dfe_matlab(vk, d, Ns, Nd, int(10)) #lineq(vk, d, Ns, Nd)
+            d_hat1 = lms(vk[0,:],d)
+            d_hat1 = d_hat1 * 4 * np.exp(1j*np.pi/4)
+        if ind==0:
             M = int(10)
-            d_hat3, mse_out = dfe_matlab(vk, d, Ns, Nd, M)
-            mse[ind] = mse_out
+            d_hat2, mse_out = dfe_matlab(vk, d, Ns, Nd, M)
 
-    text_blk = ["Hard Decision","Lin. Eq FF=12","DFE, FF=12 FB=10"]
+    text_blk = ["Lin. Eq FF=12","DFE, FF=12 FB=10"]
     # plot const
     plt.subplot(1, 2, 1)
-    plt.scatter(np.real(d_hat2), np.imag(d_hat2), marker='x')
+    plt.scatter(np.real(d_hat1[-500:]), np.imag(d_hat1[-500:]), marker='x')
     plt.axis('square')
     plt.axis([-2, 2, -2, 2])
     plt.title("Lin. Eq FF=12") #(f'd0={d_lambda[ind]}'r'$\lambda$') 
     plt.subplot(1, 2, 2)
-    plt.scatter(np.real(d_hat3), np.imag(d_hat3), marker='x')
+    plt.scatter(np.real(d_hat2[-50:]), np.imag(d_hat2[-50:]), marker='x')
     plt.axis('square')
     plt.axis([-2, 2, -2, 2])
     plt.title("DFE, FF=12 FB=10") #(f'd0={d_lambda[ind]}'r'$\lambda$') 
