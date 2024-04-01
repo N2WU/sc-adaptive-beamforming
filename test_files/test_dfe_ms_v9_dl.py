@@ -55,31 +55,6 @@ def pwr(x):
     p = np.sum(np.abs(x)**2)/len(x)
     return p
 
-def array_conditions(fc,B,n_rx,el_spacing):
-    c = 343
-    theta_p = 0
-    lambda_max = c/(fc - B/2)
-    lambda_min = c/(fc + B/2)
-
-    delmin = lambda_max/(el_spacing*n_rx)
-    delmax = lambda_min/el_spacing
-    theta_q_deg = np.linspace(-90,90)
-    theta_q = np.deg2rad(theta_q_deg)
-    theta_p = np.deg2rad(theta_p)
-
-    dataq = np.abs(np.sin(theta_p) - np.sin(theta_q))
-    delmindat = np.squeeze(np.where(dataq < delmin))
-    delmaxdat = np.squeeze(np.where(dataq > delmax))
-    try:
-        ang_res = (theta_q_deg[np.amax(delmindat)]-theta_q_deg[np.amin(delmindat)])/2
-    except:
-        ang_res = 0
-    try:
-        amb_res = (theta_q_deg[delmaxdat[int(len(delmaxdat)/2)]] - theta_q_deg[delmaxdat[int(len(delmaxdat)/2-1)]])/2
-    except:
-        amb_res = (theta_q_deg[-1]-theta_q_deg[0])/2
-    return ang_res, amb_res
-
 def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
     reflection_list = np.asarray([1,0.5]) # reflection gains
     n_path = len(reflection_list)  
@@ -105,7 +80,6 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
         for j, delay_j in enumerate(delay):
             r_multi[delay_j:delay_j+len(s), j] += reflection * s
     peaks_rx = 0
-    wk = np.ones(n_rx)
     deg_diff = 0
     if bf == 1:
         # now beamforming and weights
@@ -117,6 +91,7 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
 
         index = np.where((freqs >= fc-R/2) & (freqs < fc+R/2))[0]
         N = len(index) #uhh???
+        wk_out = np.ones((n_rx,N))
         if N > 0:
             fk = freqs[index]       
             yk = r_fft[index, :]    # N*M
@@ -160,6 +135,8 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
                     e_pu = np.zeros((n_path,1))
                     e_pu[i, 0] = 1
                     wk = Sk @ np.linalg.inv(Sk.conj().T @ Sk) @ e_pu #need to extract -> wk changes for k and for p and is size M. 
+                    if i == 0:
+                        wk_out[:,k] = wk
                     y_tilde[k, i] = wk.conj().T @ yk[k, :].T
 
             y_fft = np.zeros((len(r[:, 0]), n_path), complex)
@@ -219,14 +196,16 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
             lenvm = len(v_multichannel[0,:])
     vk = np.copy(v_multichannel)
 
-    return vk, wk, deg_diff
+    return vk, wk_out, deg_diff
 
-def transmit_dl(v_dl,wk,snr,Fs,fs,fc,n_rx,d0):
+def transmit_dl(v_dl,wk_out,snr,Fs,fs,fc,n_rx,d0):
     vs = sg.resample_poly(v_dl,Fs,fs)
     s_dls = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
     # apply wk here
-    s_dl = np.dot(np.reshape(wk,[-1,1]),np.reshape(np.fft.fft(s_dls),[1,-1]))
-    s_dl = np.fft.ifft(s_dl)
+    for k in range(len(wk_out[0,:])):
+        s_dl = np.dot(np.reshape(wk,[-1,1]),np.reshape(np.fft.fft(s_dls),[1,-1]))
+        s_dl = np.fft.ifft(s_dl)
+        # fix this
     reflection_list = np.asarray([1,0.5]) # reflection gains 
     x_rx_list = np.array([5,-5]) 
     y_rx_list = np.array([20,20])
