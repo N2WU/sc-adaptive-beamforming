@@ -81,7 +81,7 @@ def array_conditions(fc,B,n_rx,el_spacing):
     return ang_res, amb_res
 
 def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
-    reflection_list = np.asarray([1,0.5]) # reflection gains
+    reflection_list = np.asarray([1,1]) # reflection gains
     n_path = len(reflection_list)  
     x_tx_list = np.array([5,-5]) 
     y_tx_list = np.array([20,20])
@@ -230,15 +230,22 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
             v_multichannel = np.vstack((v_multichannel,v))
             lenvm = len(v_multichannel[0,:])
     vk = np.copy(v_multichannel)
-    """
-    for i in range(2,n_rx,2):
-        plt.plot(np.abs(delvals[i,:]))
+
+    dataind2 = [663, 673]
+    datamag2 = np.abs(delvals[0,dataind2])
+
+    locslocs = [6, 2]
+
+    plt.plot(np.abs(delvals[0,:]))
+    for i in range(2):
+        plt.stem(dataind2[i], datamag2[i])
+        plt.text(dataind2[i],datamag2[i], f'Delay={dataind2[i]} Samples')
     plt.xlabel("Samples")
     plt.ylabel("Cross-Correlation Magnitude")
-    plt.legend(["m=2","m=4","m=6"])
-    plt.xlim(600,700)
+    plt.xlim(660,690)
+    plt.title(f'ISI Illustration 2-path Channel')
     plt.show()
-    """
+    
     return vk, wk, deg_diff
 
 def transmit_dl(v_dl,wk,snr,n_rx,el_spacing,R,fc,fs):

@@ -27,7 +27,7 @@ def dfe_matlab(vk, d, N, Nd, M):
     Lbf = 0.99
     Nplus = 6
 
-    v = vk
+    v = np.copy(vk)
 
     f = np.zeros((Nd,K),dtype=complex)
 
@@ -98,7 +98,7 @@ def dfe_matlab(vk, d, N, Nd, M):
     return d_hat[Nt : -1], mse, #n_err, n_training
 
 if __name__ == "__main__":
-    N = 6
+    N = 15
     Nd = 3000
     M = int(10)
     
@@ -134,6 +134,10 @@ if __name__ == "__main__":
     d_hat_ul_bf, mse_ul_bf = dfe_matlab(vk_ul_bf,d_ul,N,Nd,M)
     d_hat_ul_nobf, mse_ul_nobf = dfe_matlab(vk_ul_nobf,d_ul,N,Nd,M) 
 
+    d_hat_dl_bf, mse_dl_bf = dfe_matlab(vk_dl_bf,d_dl,N,Nd,M)
+    d_hat_dl_nobf, mse_dl_nobf = dfe_matlab(vk_dl_nobf,d_dl,N,Nd,M) 
+
+    """
     N = np.arange(8,50,1)
     mse = np.zeros((len(N),2))
     for j,i in enumerate(N):
@@ -146,34 +150,34 @@ if __name__ == "__main__":
     plt.plot(N-7,mse[:,1], '-o')
     plt.legend(["nobf","bf"])
     plt.show()
-
-    # uplink constellation diagram
     """
+    # uplink constellation diagram
+    
     plt.subplot(1, 2, 1)
     plt.scatter(np.real(d_hat_ul_nobf), np.imag(d_hat_ul_nobf), marker='x')
     plt.axis('square')
     plt.axis([-2, 2, -2, 2])
-    plt.title(f'Uplink QPSK Constellation, No Beamforming')
+    plt.title(f'UL No BF, MSE={"{:.2f}".format(mse_ul_nobf)}, N_FF={N}, N_FB={M}')
     # uplink constellation diagram
     plt.subplot(1, 2, 2)
     plt.scatter(np.real(d_hat_ul_bf), np.imag(d_hat_ul_bf), marker='x')
     plt.axis('square')
     plt.axis([-2, 2, -2, 2])
-    plt.title(f'Uplink QPSK Constellation, Beamforming') 
+    plt.title(f'UL BF, MSE={"{:.2f}".format(mse_ul_bf)}, N_FF={N}, N_FB={M}') 
     plt.show()
-    """
+    
     # downlink constellation diagram
     plt.subplot(1, 2, 1)
     plt.scatter(np.real(d_hat_dl_nobf), np.imag(d_hat_dl_nobf), marker='x')
     plt.axis('square')
     plt.axis([-2, 2, -2, 2])
-    plt.title(f'No BF, MSE={"{:.2f}".format(mse_dl_nobf)}, N_FF = 8')
+    plt.title(f'No BF, MSE={"{:.2f}".format(mse_dl_nobf)}, N_FF={N}, N_FB={M}')
     # downlink constellation diagram
     plt.subplot(1, 2, 2)
     plt.scatter(np.real(d_hat_dl_bf), np.imag(d_hat_dl_bf), marker='x')
     plt.axis('square')
     plt.axis([-2, 2, -2, 2])
-    plt.title(f'BF, MSE={"{:.2f}".format(mse_dl_bf)} N_FF = 8') 
+    plt.title(f'BF, MSE={"{:.2f}".format(mse_dl_bf)}, N_FF={N}, N_FB={M}') 
     plt.show()
 
     # s(theta)
