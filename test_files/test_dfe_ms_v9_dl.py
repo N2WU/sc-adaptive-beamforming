@@ -91,7 +91,7 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
 
         index = np.where((freqs >= fc-R/2) & (freqs < fc+R/2))[0]
         N = len(index) #uhh???
-        wk_out = np.ones((n_rx,N))
+        W_out = np.ones((n_rx,N),dtype=complex) #M-by-N
         if N > 0:
             fk = freqs[index]       
             yk = r_fft[index, :]    # N*M
@@ -136,7 +136,7 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
                     e_pu[i, 0] = 1
                     wk = Sk @ np.linalg.inv(Sk.conj().T @ Sk) @ e_pu #need to extract -> wk changes for k and for p and is size M. 
                     if i == 0:
-                        wk_out[:,k] = wk
+                        W_out[:,k] = wk.flatten()
                     y_tilde[k, i] = wk.conj().T @ yk[k, :].T
 
             y_fft = np.zeros((len(r[:, 0]), n_path), complex)
@@ -196,16 +196,24 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
             lenvm = len(v_multichannel[0,:])
     vk = np.copy(v_multichannel)
 
-    return vk, wk_out, deg_diff
+    return vk, W_out, deg_diff
 
-def transmit_dl(v_dl,wk_out,snr,Fs,fs,fc,n_rx,d0):
+def transmit_dl(v_dl,W_out,snr,Fs,fs,fc,n_rx,d0):
     vs = sg.resample_poly(v_dl,Fs,fs)
-    s_dls = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
+    s_d = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
     # apply wk here
-    for k in range(len(wk_out[0,:])):
-        s_dl = np.dot(np.reshape(wk,[-1,1]),np.reshape(np.fft.fft(s_dls),[1,-1]))
-        s_dl = np.fft.ifft(s_dl)
-        # fix this
+    N = len(W_out[0,:])
+    s_tilde = np.fft.fft(s_d, N)
+    s_dl = np.zeros((n_rx,N),dtype=complex)
+    s_tx = np.zeros((n_rx,len(s_d)),dtype=complex)
+    for k in range(N):
+        wk_dl = W_out[:,k]
+        wk_modsq = np.sum(np.abs(wk_dl)**2)
+        s_dl[:,k] = s_tilde[k] * wk_dl/wk_modsq
+    #s_dl is m-by-k
+    for m in range(n_rx):    
+        s_tx[m,:] = np.fft.ifft(s_dl[m,:],len(s_d))
+        s_tx[m,:] = np.real(s_tx[m,:])  #fftshift operation here
     reflection_list = np.asarray([1,0.5]) # reflection gains 
     x_rx_list = np.array([5,-5]) 
     y_rx_list = np.array([20,20])
@@ -213,7 +221,7 @@ def transmit_dl(v_dl,wk_out,snr,Fs,fs,fc,n_rx,d0):
     x_tx = d0 * np.arange(n_rx)
     x_tx = x_tx - d0*n_rx/2 #center on origin
     y_tx = np.zeros_like(x_tx)
-    r_single = np.random.randn(int(2*len(s_dl[0,:]))).astype('complex') / snr
+    r_single = np.random.randn(int(2*len(s_tx[0,:]))).astype('complex') / snr
     for i in range(len(reflection_list)):
         x_rx, y_rx = x_rx_list[i], y_rx_list[i]
         reflection = reflection_list[i] #delay and sum not scale
@@ -222,7 +230,7 @@ def transmit_dl(v_dl,wk_out,snr,Fs,fs,fc,n_rx,d0):
         delta_tau = d_rx_tx / c
         delay = np.round(delta_tau * Fs).astype(int) # sample delay
         for j, delay_j in enumerate(delay):
-            r_single[delay_j:delay_j+len(s_dl[0,:])] += reflection * s_dl[j,:]
+            r_single[delay_j:delay_j+len(s_tx[0,:])] += reflection * s_tx[j,:]
     r = np.squeeze(r_single)
     vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
     v_single = sg.resample_poly(vr,1,Fs/fs)
@@ -385,62 +393,31 @@ if __name__ == "__main__":
 
     load = False
     downlink = True
-    beamform = range(2)
     check_conditions = False
     Ns = 7
     Nplus = 4
     # generate rx signal with ISI
     for ind in range(len(mse)):
-        for bf in beamform:
-            snr = 10**(0.1 * snr_db[ind])
-            d0 = el_spacing
-            n_rx = el_num
-            v = np.copy(u)
-            v /= np.sqrt(pwr(v))
-            if downlink:
-                v_dl = np.copy(v)
-            vk, wk, deg_diff = transmit(v,snr,Fs,fs,fc,n_rx,d0,bf) # this already does rough phase alignment
-            deg_diff_cum[ind] = deg_diff
-            if load:
-                vk_real = np.load('data/vk_real.npy')
-                vk_imag = np.load('data/vk_imag.npy')
-                vk = vk_real + 1j*vk_imag
-                d_real = np.load('data/d_real.npy')
-                d_imag = np.load('data/d_imag.npy')
-                d = d_real + 1j*d_imag
-                d = d.flatten()
-            else: 
-                np.save('data/vk_real.npy', np.real(vk))
-                np.save('data/vk_imag.npy', np.imag(vk))
-                np.save('data/d_real.npy', np.real(d))
-                np.save('data/d_imag.npy', np.imag(d))
+        snr = 10**(0.1 * snr_db[ind])
+        d0 = el_spacing
+        n_rx = el_num
+        v = np.copy(u)
+        v /= np.sqrt(pwr(v))
+        if downlink:
+            v_dl = np.copy(v)
+        vk, W_out, deg_diff = transmit(v,snr,Fs,fs,fc,n_rx,d0,1) # this already does rough phase alignment
 
-            M = int(10)
+        M = int(10)
 
-            if bf == 1:
-                d_hat_wk, mse_out_wk = dfe_matlab(vk, d, Ns, Nd, M)
-                d_hat_cum_wk[ind,:] = d_hat_wk
-                mse_wk[ind] = mse_out_wk
-            elif bf == 0:
-                #vk = 1/n_rx * np.sum(vk[::2,:],axis=0)
-                #vk = np.reshape(vk,(1,-1))
-                d_hat, mse_out = dfe_matlab(vk, d, Ns, Nd, M)
-                d_hat_cum[ind,:] = d_hat
-                mse[ind] = mse_out
-
-            if downlink: # ouch
-                if bf==1:
-                    wk_dl = np.copy(wk)
-                    v_single = transmit_dl(v_dl,wk_dl,snr,Fs,fs,fc,n_rx,d0)
-                    d_hat_dl_wk, mse_out_dl_wk = dfe_matlab(v_single, d, Ns, Nd, int(10))
-                    mse_dl_wk[ind] = mse_out_dl_wk
-                    d_hat_dl_cum_wk[ind,:] = d_hat_dl_wk
-                elif bf == 0:
-                    wk_dl = np.ones_like(wk)
-                    v_single = transmit_dl(v_dl,wk_dl,snr,Fs,fs,fc,n_rx,d0)
-                    d_hat_dl, mse_out_dl = dfe_matlab(v_single, d, Ns, Nd, int(10))
-                    mse_dl[ind] = mse_out_dl
-                    d_hat_dl_cum[ind,:] = d_hat_dl
+        d_hat_wk, mse_out_wk = dfe_matlab(vk, d, Ns, Nd, M)
+        d_hat_cum_wk[ind,:] = d_hat_wk
+        mse_wk[ind] = mse_out_wk
+        if downlink: # ouch
+            wk_dl = np.copy(W_out)
+            v_single = transmit_dl(v_dl,wk_dl,snr,Fs,fs,fc,n_rx,d0)
+            d_hat_dl_wk, mse_out_dl_wk = dfe_matlab(v_single, d, Ns, Nd, int(10))
+            mse_dl_wk[ind] = mse_out_dl_wk
+            d_hat_dl_cum_wk[ind,:] = d_hat_dl_wk
 
     fig, ax = plt.subplots()
     ax.plot(snr_db,mse_wk,'-o',color="orange")
@@ -462,15 +439,12 @@ if __name__ == "__main__":
         for ind in range(len(snr_db)):
             plt.subplot(2, 2, int(ind+1))
             plt.scatter(np.real(d_hat_dl_cum[ind,:]), np.imag(d_hat_dl_cum[ind,:]), marker='x',color='blue')
-            plt.scatter(np.real(d_hat_dl_cum_wk[ind,:]), np.imag(d_hat_dl_cum_wk[ind,:]), marker='x',color='orange')
+            #plt.scatter(np.real(d_hat_dl_cum_wk[ind,:]), np.imag(d_hat_dl_cum_wk[ind,:]), marker='x',color='orange')
             plt.axis('square')
             plt.axis([-2, 2, -2, 2])
             plt.title(f'SNR={snr_db[ind]} dB') #(f'd0={d_lambda[ind]}'r'$\lambda$')
-            plt.legend(["No Beamform","Beamform DL"])
-        fig2.suptitle('DL QPSK Constellation, 2-path, Lin. EQ')
+            #plt.legend(["No Beamform","Beamform DL"])
+        fig2.suptitle('DL QPSK Constellation')
     
     #print(deg_diff_cum)
     plt.show()
-    if check_conditions == True:
-        for i in range(len(mse)):
-            print(el_num[i], array_conditions(fc,B,el_num[i],el_spacing), deg_diff_cum[i])
