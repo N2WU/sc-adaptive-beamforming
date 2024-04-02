@@ -1,6 +1,7 @@
 import numpy as np
 import scipy.signal as sg
 import matplotlib.pyplot as plt
+#plt.rcParams['text.usetex'] = True
 
 
 def rcos(alpha, Ns, trunc):
@@ -382,17 +383,18 @@ if __name__ == "__main__":
 
     snr_db = np.array([5, 10, 15, 20]) #, 15])
     mse = np.zeros_like(snr_db)
-    mse_dl = np.zeros_like(snr_db)
-    M = int(10)
-    N_bf = int(12)
-    N_nobf = int(36)
-    d_hat_cum = np.zeros((len(snr_db),Nd-(4*(N_bf+M))-1), dtype=complex)
-    d_hat_dl_cum = np.zeros((len(snr_db),Nd-(4*(N_nobf+M))-1), dtype=complex)
-    d_hat_dl_cum_nobf = np.zeros((len(snr_db),Nd-(4*(N_nobf+M))-1), dtype=complex)
+    mse_dl_bf = np.zeros_like(snr_db)
+    M_nobf = int(15)
+    M_bf = int(5)
+    N_nobf = int(45)
+    N_bf = int(10)
+    d_hat_cum_nobf = np.zeros((len(snr_db),Nd-(4*(N_nobf+M_nobf))-1), dtype=complex)
+    d_hat_dl_cum_bf = np.zeros((len(snr_db),Nd-(4*(N_bf+M_bf))-1), dtype=complex)
+    d_hat_dl_cum_nobf = np.zeros((len(snr_db),Nd-(4*(N_nobf+M_nobf))-1), dtype=complex)
     mse_dl_nobf = np.zeros_like(snr_db)
 
     mse_wk = np.zeros_like(snr_db)
-    d_hat_cum_wk = np.zeros((len(snr_db),Nd-(4*(N_bf+M))-1), dtype=complex)
+    d_hat_cum_bf = np.zeros((len(snr_db),Nd-(4*(N_bf+M_bf))-1), dtype=complex)
     deg_diff_cum = np.zeros_like(mse,dtype=float)
 
     load = False
@@ -416,23 +418,24 @@ if __name__ == "__main__":
             M = int(10)
 
             if bf == 1:
-                d_hat_wk, mse_out_wk = dfe_matlab(vk, d, N_bf, Nd, M)
-                d_hat_cum_wk[ind,:] = d_hat_wk
+                d_hat_wk, mse_out_wk = dfe_matlab(vk, d, N_bf, Nd, M_bf)
+                d_hat_cum_bf[ind,:] = d_hat_wk
                 mse_wk[ind] = mse_out_wk
             elif bf == 0:
                 #vk = 1/n_rx * np.sum(vk[::2,:],axis=0)
                 #vk = np.reshape(vk,(1,-1))
-                d_hat, mse_out = dfe_matlab(vk, d, N_bf, Nd, M)
-                d_hat_cum[ind,:] = d_hat
+                d_hat, mse_out = dfe_matlab(vk, d, N_nobf, Nd, M_nobf)
+                d_hat_cum_nobf[ind,:] = d_hat
                 mse[ind] = mse_out
 
         if downlink: # ouch
             v_single_nobf = transmit_dl(v_dl,ang_est,snr,n_rx,el_spacing,R,fc,fs,0)
-            d_hat_dl_nobf, mse_out_dl_nobf = dfe_matlab(v_single_nobf, d, N_nobf, Nd, M)
+            d_hat_dl_nobf, mse_out_dl_nobf = dfe_matlab(v_single_nobf, d, N_nobf, Nd, M_nobf)
+
             v_single_bf = transmit_dl(v_dl,ang_est,snr,n_rx,el_spacing,R,fc,fs,1)
-            d_hat_dl, mse_out_dl = dfe_matlab(v_single_bf, d, N_nobf, Nd, M)
-            mse_dl[ind] = mse_out_dl
-            d_hat_dl_cum[ind,:] = d_hat_dl
+            d_hat_dl_bf, mse_out_dl = dfe_matlab(v_single_bf, d, N_bf, Nd, M_bf)
+            mse_dl_bf[ind] = mse_out_dl
+            d_hat_dl_cum_bf[ind,:] = d_hat_dl_bf
             mse_dl_nobf[ind] = mse_out_dl_nobf
             d_hat_dl_cum_nobf[ind,:] = d_hat_dl_nobf
     """
@@ -457,23 +460,30 @@ if __name__ == "__main__":
     if downlink:
         #fig1, ax1 = plt.subplots()
         plt.figure()
-        plt.plot(snr_db,mse_dl,'-o', color='orange')
+        plt.plot(snr_db,mse_dl_bf,'-o', color='orange')
         plt.plot(snr_db,mse_dl_nobf,'-o',color='blue')
         plt.xlabel(r'SNR (dB)')
         plt.ylabel('MSE (dB)')
-        plt.title(r'MSE vs SNR Downlink, $N_{FF}=25, N_{FB}=10$')
-        plt.legend(["BF","No BF"])
+        plt.title(r'MSE vs SNR Downlink, Varied $N_{FF}$ and $N_{FB}$ Taps')
+        plt.legend([r'BF, $N_{{FF}}=${}, $N_{{FB}}=${}'.format(N_bf, M_bf), 
+                    r'BF, $N_{{FF}}=${}, $N_{{FB}}=${} '.format(N_nobf, M_nobf)])
 
-        """
+        
         plt.figure()
         for ind in range(len(snr_db)):
             plt.subplot(2, 2, int(ind+1))
-            plt.scatter(np.real(d_hat_dl_cum[ind,:]), np.imag(d_hat_dl_cum[ind,:]), marker='x', alpha=0.5)
+            plt.scatter(np.real(d_hat_dl_cum_bf[ind,:]), np.imag(d_hat_dl_cum_bf[ind,:]), marker='x', alpha=0.5, color='orange')
+            #plt.scatter(np.real(d_hat_dl_cum_nobf[ind,:]), np.imag(d_hat_dl_cum_nobf[ind,:]), marker='x', alpha=0.5, color='blue')
             plt.axis('square')
             plt.axis([-2, 2, -2, 2])
-            plt.xlabel("In-Phase")
+            plt.xticks([],[])
+            plt.yticks([],[])
+            if ind == 2 or 3:
+                plt.xlabel("In-Phase")
+            elif ind== 0 or 1:
+                plt.xlabel("")
             plt.ylabel("Quadrature")
             plt.title(f'DL, BF: SNR={snr_db[ind]} dB') #(f'd0={d_lambda[ind]}'r'$\lambda$')
-        """
+        
         plt.show()
     print(mse)
