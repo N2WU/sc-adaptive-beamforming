@@ -2,9 +2,6 @@ import numpy as np
 import scipy.signal as sg
 import matplotlib.pyplot as plt
 
-# 2024-02-27: initial commit
-# this code simulates noisy two-path reflected environment
-# then transmits the adjusted signal back
 
 def rcos(alpha, Ns, trunc):
     tn = np.arange(-trunc * Ns, trunc * Ns+1) / Ns
@@ -55,39 +52,14 @@ def pwr(x):
     p = np.sum(np.abs(x)**2)/len(x)
     return p
 
-def array_conditions(fc,B,n_rx,el_spacing):
-    c = 343
-    theta_p = 0
-    lambda_max = c/(fc - B/2)
-    lambda_min = c/(fc + B/2)
-
-    delmin = lambda_max/(el_spacing*n_rx)
-    delmax = lambda_min/el_spacing
-    theta_q_deg = np.linspace(-90,90)
-    theta_q = np.deg2rad(theta_q_deg)
-    theta_p = np.deg2rad(theta_p)
-
-    dataq = np.abs(np.sin(theta_p) - np.sin(theta_q))
-    delmindat = np.squeeze(np.where(dataq < delmin))
-    delmaxdat = np.squeeze(np.where(dataq > delmax))
-    try:
-        ang_res = (theta_q_deg[np.amax(delmindat)]-theta_q_deg[np.amin(delmindat)])/2
-    except:
-        ang_res = 0
-    try:
-        amb_res = (theta_q_deg[delmaxdat[int(len(delmaxdat)/2)]] - theta_q_deg[delmaxdat[int(len(delmaxdat)/2-1)]])/2
-    except:
-        amb_res = (theta_q_deg[-1]-theta_q_deg[0])/2
-    return ang_res, amb_res
-
 def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
     reflection_list = np.asarray([1,1]) # reflection gains
     n_path = len(reflection_list)  
     x_tx_list = np.array([5,-5]) 
     y_tx_list = np.array([20,20])
     c = 343
-    x_rx = d0 * np.arange(n_rx)
-    x_rx = x_rx # - d0*n_rx/2 #center on origin
+    x_rx = d0 * np.arange(n_rx) #starting on origin
+    # x_rx = x_rx # - d0*n_rx/2 #center on origin
     y_rx = np.zeros_like(x_rx)
     vs = sg.resample_poly(v,Fs,fs)
     #vs = sg.resample_poly(v,4,1)
@@ -119,82 +91,64 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
 
         index = np.where((freqs >= fc-R/2) & (freqs < fc+R/2))[0]
         N = len(index) #uhh???
-        if N > 0:
-            fk = freqs[index]       
-            yk = r_fft[index, :]    # N*M
-            theta_start = -45
-            theta_end = 45
-            N_theta = 200
-            deg_theta = np.linspace(theta_start,theta_end,N_theta)
-            S_theta = np.zeros((N_theta,))
-            S_theta3D = np.zeros((N_theta, N))
-            theta_start = np.deg2rad(theta_start)
-            theta_end = np.deg2rad(theta_end)
-            theta_list = np.linspace(theta_start, theta_end, N_theta)
-            for n_theta, theta in enumerate(theta_list):
-                d_tau = np.sin(theta) * d0/c
-                # for k in range(N):
-                #     S_M = np.exp(-2j * np.pi * fk[k] * d_tau * np.arange(M).reshape(M,1))
-                #     S_theta[n_theta] += np.abs(np.vdot(S_M.T, yk[k, :].T))**2
-                S_M = np.exp(-2j * np.pi * d_tau * np.dot(fk.reshape(N, 1), np.arange(M).reshape(1, M)))    # N*M
-                SMxYk = np.einsum('ij,ji->i', S_M.conj(), yk.T)
-                S_theta[n_theta] = np.real(np.vdot(SMxYk, SMxYk)) #real part
-                S_theta[n_theta] = np.abs(S_theta[n_theta])**2 # doesn't necessarily make a difference
-                S_theta3D[n_theta, :] = np.abs(SMxYk)**2
+        W_out = np.ones((n_rx,N),dtype=complex)
+        fk = freqs[index]       
+        yk = r_fft[index, :]    # N*M
+        theta_start = -45
+        theta_end = 45
+        N_theta = 200
+        deg_theta = np.linspace(theta_start,theta_end,N_theta)
+        S_theta = np.zeros((N_theta,))
+        S_theta3D = np.zeros((N_theta, N))
+        theta_start = np.deg2rad(theta_start)
+        theta_end = np.deg2rad(theta_end)
+        theta_list = np.linspace(theta_start, theta_end, N_theta)
+        for n_theta, theta in enumerate(theta_list):
+            d_tau = np.sin(theta) * d0/c
+            # for k in range(N):
+            #     S_M = np.exp(-2j * np.pi * fk[k] * d_tau * np.arange(M).reshape(M,1))
+            #     S_theta[n_theta] += np.abs(np.vdot(S_M.T, yk[k, :].T))**2
+            S_M = np.exp(-2j * np.pi * d_tau * np.dot(fk.reshape(N, 1), np.arange(M).reshape(1, M)))    # N*M
+            SMxYk = np.einsum('ij,ji->i', S_M.conj(), yk.T)
+            S_theta[n_theta] = np.real(np.vdot(SMxYk, SMxYk)) #real part
+            S_theta[n_theta] = np.abs(S_theta[n_theta])**2 # doesn't necessarily make a difference
+            S_theta3D[n_theta, :] = np.abs(SMxYk)**2
 
-            # n_path = 1 # number of path
-            S_theta_peaks_idx, _ = sg.find_peaks(S_theta, height=0) #S_theta
-            S_theta_peaks = S_theta[S_theta_peaks_idx] #S_theta
-            theta_m_idx = np.argsort(S_theta_peaks)
-            theta_m = theta_list[S_theta_peaks_idx[theta_m_idx[-n_path:]]]
-            print(theta_m/np.pi*180)
+        # n_path = 1 # number of path
+        S_theta_peaks_idx, _ = sg.find_peaks(S_theta, height=0) #S_theta
+        S_theta_peaks = S_theta[S_theta_peaks_idx] #S_theta
+        theta_m_idx = np.argsort(S_theta_peaks)
+        theta_m = theta_list[S_theta_peaks_idx[theta_m_idx[-n_path:]]]
+        print(theta_m/np.pi*180)
 
-            y_tilde = np.zeros((N,n_path), dtype=complex)
-            for k in range(N):
-                d_tau_m = np.sin(theta_m) * d0/c
-                try:
-                    d_tau_new = d_tau_m.reshape(1, n_path)
-                except:
-                    d_tau_new = np.append(d_tau_m, [0])
-                    d_tau_new = d_tau_new.reshape(1, n_path)
-                Sk = np.exp(-2j * np.pi * fk[k] * np.arange(M).reshape(M, 1) @ d_tau_new)
-                for i in range(n_path):
-                    e_pu = np.zeros((n_path,1))
-                    e_pu[i, 0] = 1
-                    wk = Sk @ np.linalg.inv(Sk.conj().T @ Sk) @ e_pu
-                    y_tilde[k, i] = wk.conj().T @ yk[k, :].T
+        y_tilde = np.zeros((N,n_path), dtype=complex)
+        for k in range(N):
+            d_tau_m = np.sin(theta_m) * d0/c
+            try:
+                d_tau_new = d_tau_m.reshape(1, n_path)
+            except:
+                d_tau_new = np.append(d_tau_m, [0])
+                d_tau_new = d_tau_new.reshape(1, n_path)
+            Sk = np.exp(-2j * np.pi * fk[k] * np.arange(M).reshape(M, 1) @ d_tau_new)
+            for i in range(n_path):
+                e_pu = np.zeros((n_path,1))
+                e_pu[i, 0] = 1
+                wk = Sk @ np.linalg.inv(Sk.conj().T @ Sk) @ e_pu
+                if i==1:
+                    W_out[:,k] = wk.flatten()
+                y_tilde[k, i] = wk.conj().T @ yk[k, :].T
 
-            y_fft = np.zeros((len(r[:, 0]), n_path), complex)
-            y_fft[index, :] = y_tilde
-            y = np.fft.ifft(y_fft, axis=0)
-            bf_flag = True
-        else:
-            y = np.copy(vk).T
-            bf_flag = False
+        y_fft = np.zeros((len(r[:, 0]), n_path), complex)
+        y_fft[index, :] = y_tilde
+        y = np.fft.ifft(y_fft, axis=0)
         
         est_deg = np.argmax(S_theta)
         deg_ax = np.flip(deg_theta)
         deg_diff = np.abs(true_angle - deg_ax[est_deg])
-        
-        """
-        print(true_angle)
-        plt.plot(deg_ax,S_theta)
-        plt.axvline(x=true_angle, linestyle="--", color="red")
-        plt.axvline(x=theta_m[1]/np.pi*180, linestyle="--", color="blue")
-        plt.axvline(x=-true_angle, linestyle="--", color="red")
-        plt.axvline(x=theta_m[0]/np.pi*180, linestyle="--", color="blue")
-        plt.text(theta_m[1]/np.pi*180, np.max(S_theta), f'Est Angle={"{:.2f}".format(deg_ax[est_deg])}')
-        plt.text(true_angle,  0.5e23, f'True Angle={"{:.2f}".format(true_angle)}')
-        plt.text(theta_m[0]/np.pi*180, np.max(S_theta), f'Est Angle={"{:.2f}".format(deg_ax[est_deg])}')
-        plt.text(-true_angle, 0.5e23, f'True Angle={"{:.2f}".format(-true_angle)}')
-        plt.title(f'S(Theta) for {10*np.log10(snr)} dB, M={n_rx}, B = 3.9 kHz, d0 ={d0}')
-        plt.xlabel("Angle of Arrival (Degrees)")
-        plt.xlim(-30,30)
-        plt.ylabel("Power Magnitude Squared")
-        plt.show()
-        """
-        
-        r_multi = np.copy(y)  
+
+        r_multi = np.copy(y) 
+    elif bf ==0:
+        W_out = np.zeros_like(r_multi) 
     delvals = np.zeros((n_rx,1024))
     for i in range(len(r_multi[0,:])):
         r = np.squeeze(r_multi[:, i])
@@ -246,37 +200,76 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
     plt.title(f'ISI Illustration 2-path Channel')
     plt.show()
     """
-    return vk, wk, deg_diff
+    return vk, W_out, deg_diff
 
-def transmit_dl(v_dl,wk,snr,n_rx,el_spacing,R,fc,fs):
-    vs = sg.resample_poly(v_dl,Fs,fs)
-    s_dls = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
+def transmit_dl(v_dl,W_out,snr,n_rx,el_spacing,R,fc,fs,bfdl):
+    us = sg.resample_poly(v_dl,Fs,fs)
     # apply wk here
-    #s_dl = wk * s_dl
-    #s_dl = np.tile(s_dl,(n_rx,1))
-    s_dl = np.dot(np.reshape(wk,[-1,1]),np.reshape(s_dls,[1,-1]))
-    reflection_list = np.asarray([1,0.5]) # reflection gains 
-    x_rx_list = np.array([5,-5]) 
-    y_rx_list = np.array([20,20])
+    if bfdl==1:
+        N = len(W_out[0,:])
+        u_tilde = np.fft.fft(us, N)
+        u_dl = np.zeros((n_rx,N),dtype=complex)
+        u_tx = np.zeros((n_rx,len(us)),dtype=complex)
+        u_tilde = np.fft.fft(us, N)
+        u_tilde = np.fft.fftshift(u_tilde)
+        #fk = np.linspace(fc-R/2, fc + R/2, N)
+        #fk = np.arange(len(us))
+        for k in range(N):
+            #wk_dl = W_out[:,k]
+            d_tau = 0.05/343 * np.sin(np.deg2rad(15))
+            wk_dl = np.exp(-1j*2*np.pi*d_tau*fc*np.arange(n_rx))*np.exp(1j*2*np.pi*fc)
+            #wk_dl = W_out[:,k]
+            wk_modsq = np.sum(np.abs(wk_dl)**2)
+            u_dl[:,k] = u_tilde[k] * wk_dl/wk_modsq
+        #s_dl is m-by-k
+        for m in range(n_rx):    
+            u_tx[m,:] = np.fft.ifft(u_dl[m,:],len(us))
+            u_tx[m,:] = u_tx[m,:]  #fftshift operation here? identify similarities. Not sure if real(w_dl) would give anything meaningful
+    elif bfdl == 0:
+        u_tx = np.zeros((n_rx,len(us)), dtype=complex)
+        u_tx[0,:] = n_rx * us # equal power but in one element 
+    s_tx = np.zeros((n_rx,len(us)))
+    for i in range(n_rx):
+        s_tx[i,:] = np.real(u_tx[i,:]*np.exp(1j*2*np.pi*fc*np.arange(len(us))/Fs))
+    x_rx = np.array([5])
+    y_rx = np.array([20])
     c = 343
-    duration = 10 # amount of padding, basically
-    x_tx = np.arange(0, el_spacing*n_rx, el_spacing)
-    y_tx = np.zeros_like(x_tx)
-    rng = np.random.RandomState(2021)
-    r_single = rng.randn(int(duration * fs)) / snr
-    r_single = r_single.astype('complex')
+    x_d = d0 + d0 * np.arange(n_rx)
+    x_refl = d0*np.arange(-n_rx,0)
+    x_tx_list = np.append(x_refl,x_d)
+    #x_tx = x_tx - d0*n_rx/2 #center on origin
+    y_tx_list = np.zeros_like(x_tx_list)
+    r_single = np.random.randn(int(2*len(s_tx[0,:]))).astype('complex') / snr
+    array_h = np.ones(n_rx)
+    reflection_list = np.append(0.1*array_h, array_h)
+    # make s_tx a reflection
+    s_tx_ref = np.zeros((2*n_rx,len(s_tx[0,:])), dtype=complex)
+    s_tx_ref[n_rx:,:] = s_tx
+    s_tx_ref[:n_rx,:] = np.flipud(s_tx)
     for i in range(len(reflection_list)):
-        x_rx, y_rx = x_rx_list[i], y_rx_list[i]
+        x_tx, y_tx = x_tx_list[i], y_tx_list[i]
         reflection = reflection_list[i] #delay and sum not scale
         dx, dy = x_rx - x_tx, y_rx - y_tx
         d_rx_tx = np.sqrt(dx**2 + dy**2)
         delta_tau = d_rx_tx / c
-        delay = np.round(delta_tau * fs).astype(int) # sample delay
-        for j, delay_j in enumerate(delay):
-            r_single[delay_j:delay_j+len(s_dl[0,:])] += reflection * s_dl[j,:]
+        delay = np.round(delta_tau * Fs).astype(int) # sample delay
+        delay = delay[0]
+        r_single[delay:delay+len(s_tx[0,:])] += reflection * s_tx_ref[i,:]
     r = np.squeeze(r_single)
     vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
     v_single = sg.resample_poly(vr,1,Fs/fs)
+    vps = v_single[:len(up)+Nz*Ns]
+    delvals,_ = fdel(vps,up)
+    vp1s = vps[delvals:delvals+len(up)]
+    fdes,_,_ = fdop(vp1s,up,fs,12)
+    v_single = v_single*np.exp(-1j*2*np.pi*np.arange(len(v_single))*fdes*Ts)
+    v_single = sg.resample_poly(v_single,np.rint(10**4),np.rint((1/(1+fdes/fc))*(10**4)))
+    
+    v_single = v_single[delvals:delvals+len(u)]
+    v_single = v_single[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
+    v_single = sg.resample_poly(v_single,2,Ns)
+    v_single = np.concatenate((v_single,np.zeros(Nplus*2))) # should occur after
+    v_single = v_single.reshape(1,-1) 
     return v_single
 
 def dec4psk(x):
@@ -288,10 +281,10 @@ def dec4psk(x):
     d = d/np.sqrt(2)
     return d
 
-def dfe_matlab(vk, d, Ns, Nd, M): 
+def dfe_matlab(vk, d, N, Nd, M): 
     K = len(vk[:,0]) # maximum
     Ns = 2
-    N = int(6 * Ns)
+    #N = int(6 * Ns)
     delta = 10**(-3)
     Nt = 4*(N+M)
     FS = 2
@@ -409,22 +402,24 @@ if __name__ == "__main__":
     s = np.real(us * np.exp(2j * np.pi * fc * np.arange(len(us)) / Fs))
     # s /= np.max(np.abs(s))
 
-    snr_db = np.array([10, 15, 20, 25]) #, 15])
+    snr_db = np.array([5, 10, 15, 20]) #, 15])
     mse = np.zeros_like(snr_db)
     mse_dl = np.zeros_like(snr_db)
-    d_hat_cum = np.zeros((len(snr_db),Nd-88-1), dtype=complex) # has to change if Nt changes :(
-    d_hat_dl_cum = np.zeros_like(d_hat_cum,dtype=complex)
+    M = int(10)
+    N_bf = int(12)
+    N_nobf = int(36)
+    d_hat_cum = np.zeros((len(snr_db),Nd-(4*(N_bf+M))-1), dtype=complex)
+    d_hat_dl_cum = np.zeros((len(snr_db),Nd-(4*(N_nobf+M))-1), dtype=complex)
+    d_hat_dl_cum_nobf = np.zeros((len(snr_db),Nd-(4*(N_nobf+M))-1), dtype=complex)
+    mse_dl_nobf = np.zeros_like(snr_db)
 
     mse_wk = np.zeros_like(snr_db)
-    d_hat_cum_wk = np.zeros((len(snr_db),Nd-88-1), dtype=complex) # has to change if Nt changes :(
+    d_hat_cum_wk = np.zeros((len(snr_db),Nd-(4*(N_bf+M))-1), dtype=complex)
     deg_diff_cum = np.zeros_like(mse,dtype=float)
 
     load = False
-    downlink = False
+    downlink = True
     beamform = range(2)
-    check_conditions = True
-    if check_conditions == True:
-        print(array_conditions(fc,B,n_rx,el_spacing))
     K0 = n_rx
     Ns = 7
     Nplus = 4
@@ -437,53 +432,33 @@ if __name__ == "__main__":
             #for i in range(K0):
             v = np.copy(u) #np.zeros(len(u), dtype=complex)
             v /= np.sqrt(pwr(v))
-            vk, wk, deg_diff = transmit(v,snr,Fs,fs,fc,n_rx,d0,bf) # this already does rough phase alignment
+            v_dl = np.copy(v)
+            vk, W_out, deg_diff = transmit(v,snr,Fs,fs,fc,n_rx,d0,bf) # this already does rough phase alignment
             deg_diff_cum[ind] = deg_diff
-            if load:
-                vk_real = np.load('data/vk_real.npy')
-                vk_imag = np.load('data/vk_imag.npy')
-                vk = vk_real + 1j*vk_imag
-                d_real = np.load('data/d_real.npy')
-                d_imag = np.load('data/d_imag.npy')
-                d = d_real + 1j*d_imag
-                d = d.flatten()
-            else: 
-                np.save('data/vk_real.npy', np.real(vk))
-                np.save('data/vk_imag.npy', np.imag(vk))
-                np.save('data/d_real.npy', np.real(d))
-                np.save('data/d_imag.npy', np.imag(d))
 
             M = int(10)
 
             if bf == 1:
-                d_hat_wk, mse_out_wk = dfe_matlab(vk, d, Ns, Nd, M)
+                d_hat_wk, mse_out_wk = dfe_matlab(vk, d, N_bf, Nd, M)
                 d_hat_cum_wk[ind,:] = d_hat_wk
                 mse_wk[ind] = mse_out_wk
             elif bf == 0:
                 #vk = 1/n_rx * np.sum(vk[::2,:],axis=0)
                 #vk = np.reshape(vk,(1,-1))
-                d_hat, mse_out = dfe_matlab(vk, d, Ns, Nd, M)
+                d_hat, mse_out = dfe_matlab(vk, d, N_bf, Nd, M)
                 d_hat_cum[ind,:] = d_hat
                 mse[ind] = mse_out
 
         if downlink: # ouch
-            v_single = transmit_dl(v_dl,wk,snr+5,n_rx,el_spacing,R,fc,fs)
-            vps = v_single[:len(up)+Nz*Ns]
-            delvals,_ = fdel(vps,up)
-            vp1s = vps[delvals:delvals+len(up)]
-            fdes,_,_ = fdop(vp1s,up,fs,12)
-            v_single = v_single*np.exp(-1j*2*np.pi*np.arange(len(v_single))*fdes*Ts)
-            v_single = sg.resample_poly(v_single,np.rint(10**4),np.rint((1/(1+fdes/fc))*(10**4)))
-            
-            v_single = v_single[delvals:delvals+len(u)]
-            v_single = v_single[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
-            v_single = sg.resample_poly(v_single,2,Ns)
-            v_single = np.concatenate((v_single,np.zeros(Nplus*2))) # should occur after
-            v_single = v_single.reshape(1,-1) 
-            d_hat_dl, mse_out_dl = dfe_matlab(v_single, d, Ns, Nd, M)
+            v_single_nobf = transmit_dl(v_dl,W_out,snr,n_rx,el_spacing,R,fc,fs,0)
+            d_hat_dl_nobf, mse_out_dl_nobf = dfe_matlab(v_single_nobf, d, N_nobf, Nd, M)
+            v_single_bf = transmit_dl(v_dl,W_out,snr,n_rx,el_spacing,R,fc,fs,1)
+            d_hat_dl, mse_out_dl = dfe_matlab(v_single_bf, d, N_nobf, Nd, M)
             mse_dl[ind] = mse_out_dl
             d_hat_dl_cum[ind,:] = d_hat_dl
-
+            mse_dl_nobf[ind] = mse_out_dl_nobf
+            d_hat_dl_cum_nobf[ind,:] = d_hat_dl_nobf
+    """
     for ind in range(len(mse)):
         # plot const
         plt.subplot(2, 2, int(ind+1))
@@ -501,20 +476,25 @@ if __name__ == "__main__":
     ax.set_ylabel('MSE (dB)')
     ax.set_title(f'UL MSE for 2-path channel, M={n_rx}, d0={d0}, fc={fc}')
     ax.legend(['MRC Only','Beamforming'])
-
+    """
     if downlink:
-        fig1, ax1 = plt.subplots()
-        ax1.plot(snr_db,mse_dl,'o')
-        ax1.set_xlabel(r'SNR (dB)')
-        ax1.set_ylabel('MSE (dB)')
-        ax1.set_title('MSE vs SNR for QPSK Signal DL')
-        
+        #fig1, ax1 = plt.subplots()
+        plt.figure()
+        plt.plot(snr_db,mse_dl,'-o', color='orange')
+        plt.plot(snr_db,mse_dl_nobf,'-o',color='blue')
+        plt.xlabel(r'SNR (dB)')
+        plt.ylabel('MSE (dB)')
+        plt.title(r'MSE vs SNR Downlink, $N_{FF}=25, N_{FB}=10$')
+        plt.legend(["BF","No BF"])
+
+        plt.figure()
         for ind in range(len(snr_db)):
             plt.subplot(2, 2, int(ind+1))
-            plt.scatter(np.real(d_hat_dl_cum[ind,:]), np.imag(d_hat_dl_cum[ind,:]), marker='x')
+            plt.scatter(np.real(d_hat_dl_cum[ind,:]), np.imag(d_hat_dl_cum[ind,:]), marker='x', alpha=0.5)
             plt.axis('square')
             plt.axis([-2, 2, -2, 2])
-            plt.title(f'SNR={snr_db[ind]} dB') #(f'd0={d_lambda[ind]}'r'$\lambda$')
-
-    plt.show()
+            plt.xlabel("In-Phase")
+            plt.ylabel("Quadrature")
+            plt.title(f'DL, BF: SNR={snr_db[ind]} dB') #(f'd0={d_lambda[ind]}'r'$\lambda$')
+        plt.show()
     print(mse)
