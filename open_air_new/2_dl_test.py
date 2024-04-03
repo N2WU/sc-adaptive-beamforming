@@ -83,17 +83,18 @@ def testbed(s_tx,n_tx,n_rx,Fs):
         print("Received")
     return rx
 
-def downlink(v_dl,wk,Fs,fs,fc,n_rx,n_tx):
+def downlink(v_dl,ang_est,el_spacing,R,fc,fs,n_tx,n_rx,bfdl):
     vs = sg.resample_poly(v_dl,Fs,fs)
-    s = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
-    r = np.zeros(len(s))
-    # slightly confused
-    # generate angle steering vec and apply
-    s_tx = np.dot(np.reshape(wk,[-1,1]),np.reshape(np.fft.fft(s),[1,-1]))
-    s_tx = np.fft.ifft(s_tx)
-
-    #for i in range(n_tx):
-    #    s_tx[:,i] /= np.sqrt(pwr(s_tx[:,i]))
+    s_d = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
+    delays = np.rint(Fs * el_spacing/343 * np.sin(np.deg2rad(ang_est))*np.arange(n_tx)).astype(int)
+    s_tx = np.zeros((n_tx,int(np.amax(delays) + len(s_d))))
+    # apply wk here
+    if bfdl == 1:
+        for i in range(n_tx):
+            delay = delays[i]
+            s_tx[i,delay:delay+len(s_d)] = s_d
+    elif bfdl == 0:
+        s_tx[0,:len(s_d)] = n_tx * s_d # equal power but in one element
 
     r = testbed(np.real(s_tx.T),n_tx,n_rx,Fs) # s-by-nrx
 
@@ -127,10 +128,10 @@ def dec4psk(x):
     d = d/np.sqrt(2)
     return d
 
-def dfe_matlab(vk, d, Ns, Nd, M): 
+def dfe_matlab(vk, d, N, Nd, M): 
     K = len(vk[:,0]) # maximum
     Ns = 2
-    N = int(6 * Ns)
+    #N = int(6 * Ns)
     delta = 10**(-3)
     Nt = 4*(N+M)
     FS = 2
@@ -145,7 +146,7 @@ def dfe_matlab(vk, d, Ns, Nd, M):
     v = vk
 
     f = np.zeros((Nd,K),dtype=complex)
-
+    
     a = np.zeros(int(K*N), dtype=complex)
     b = np.zeros(M, dtype=complex)
     c = np.append(a, -b)
@@ -248,58 +249,29 @@ if __name__ == "__main__":
     v = np.copy(u)
     v_dl = np.copy(v)
 
-    angle_deg = -10
+    ang_est = np.load('data/ul/ang_est.npy')
+    el_spacing = 0.05
 
-    wk_real = np.load('data/wk_real.npy')
-    wk_imag = np.load('data/wk_imag.npy')
-    wk = wk_real + 1j*wk_imag
-
-    # now beamforming and weights
-    d0 = 0.05
-    c = 343
-    theta_m = [-10, -20]
-    n_path = 2
-    M = n_tx
-    """
-    freqs = np.load('data/freqs.npy')
-    index = np.where((freqs >= fc-R/2) & (freqs < fc+R/2))[0]
-    yk_real = np.load('data/yk_real.npy')
-    yk_imag = np.load('data/yk_imag.npy')
-    yk = yk_real + 1j*yk_imag
-    N = len(index) #uhh???
-    y_tilde = np.zeros((N,n_path), dtype=complex)
-    if N > 0:
-        fk = freqs[index] 
-    for k in range(N):
-        d_tau_m = np.sin(theta_m) * d0/c
-        try:
-            d_tau_new = d_tau_m.reshape(1, n_path)
-        except:
-            d_tau_new = np.append(d_tau_m, [0])
-            d_tau_new = d_tau_new.reshape(1, n_path)
-        Sk = np.exp(-2j * np.pi * fk[k] * np.arange(M).reshape(M, 1) @ d_tau_new)
-        for i in range(n_path):
-            e_pu = np.zeros((n_path,1))
-            e_pu[i, 0] = 1
-            wk = Sk @ np.linalg.inv(Sk.conj().T @ Sk) @ e_pu
-            y_tilde[k, i] = wk.conj().T @ yk[k, :].T
-    """
-    wk /= np.sqrt(pwr(wk))
-    vk_bf = downlink(v_dl,wk,Fs,fs,fc,n_rx,n_tx)
+    vk_bf = downlink(v_dl,ang_est,el_spacing,R,fc,fs,n_tx,n_rx,1)
     
-    vk_nobf = downlink(v_dl,np.ones_like(wk),Fs,fs,fc,n_rx,n_tx)
+    vk_nobf = downlink(v_dl,ang_est,el_spacing,R,fc,fs,n_tx,n_rx,0)
 
-    np.save('data/vk_dl_nobf_real.npy', np.real(vk_nobf))
-    np.save('data/vk_dl_nobf_imag.npy', np.imag(vk_nobf))
-    np.save('data/vk_dl_bf_real.npy', np.real(vk_bf))
-    np.save('data/vk_dl_bf_imag.npy', np.imag(vk_bf))
-    np.save('data/d_dl_real.npy', np.real(d))
-    np.save('data/d_dl_imag.npy', np.imag(d))
+    np.save('data/dl/vk_dl_nobf_real.npy', np.real(vk_nobf))
+    np.save('data/dl/vk_dl_nobf_imag.npy', np.imag(vk_nobf))
+    np.save('data/dl/vk_dl_bf_real.npy', np.real(vk_bf))
+    np.save('data/dl/vk_dl_bf_imag.npy', np.imag(vk_bf))
+    np.save('data/dl/d_dl_real.npy', np.real(d))
+    np.save('data/dl/d_dl_imag.npy', np.imag(d))
 
-    d_hat_dl, mse_bf_dl = dfe_matlab(vk_bf, d, Ns, Nd, int(10))
+    M_bf = int(5)
+    M_nobf = int(15)
+    N_bf = int(10)
+    N_nobf = int(45)
+    _, mse_nobf = dfe_matlab(vk_nobf, d, N_nobf, Nd, M_nobf)
+    _, mse_bf = dfe_matlab(vk_bf, d, N_nobf, Nd, M_nobf)
+    _, mse_bf_taps = dfe_matlab(vk_bf, d, N_bf, Nd, M_bf)
 
-    d_hat_dl, mse_nobf_dl = dfe_matlab(vk_nobf, d, Ns, Nd, int(10))
-
-    print("NOBF:", mse_nobf_dl)
-    print("BF:", mse_bf_dl)
+    print("MSE No BF:", mse_nobf)
+    print("MSE BF:", mse_bf)
+    print("MSE BF Less Taps:", mse_bf_taps)
     
