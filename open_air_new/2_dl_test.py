@@ -99,20 +99,25 @@ def downlink(v_dl,ang_est,el_spacing,R,fc,fs,n_tx,n_rx,bfdl):
     r = testbed(np.real(s_tx.T),n_tx,n_rx,Fs) # s-by-nrx
 
     r = np.squeeze(r)
-    vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
-    v_single = sg.resample_poly(vr,1,Fs/fs)
-    vps = v_single[:len(up)+Nz*Ns]
-    delvals,_ = fdel(vps,up)
-    adj_len = delvals+len(up)
-    if adj_len > len(vps): 
-        delvals = 0 # don't adjust with xcorr if it would otherwise ruin signal
-    vp1s = vps[delvals:delvals+len(up)]
-    fdes,_,_ = fdop(vp1s,up,fs,12)
+    vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs) #Fs
+    v = sg.resample_poly(vr,1,Fs/fs)
+    #v = sg.resample_poly(vr,1,4)
+    vp = v[:len(up)+Nz*Ns]
+    delval,xvals = fdel(vp,up)
+    vp1 = vp[delval:delval+len(up)]
+    lendiff = len(up)-len(vp1)
+    if lendiff > 0:
+        vp1 = np.append(vp1, np.zeros(lendiff))
+    #fde,_,_ = fdop(vp1,up,fs,12)
+    #v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
+    #v = sg.resample_poly(v,np.rint(10**4),np.rint((1/(1+fde/fc))*(10**4)))
     
-    #v_single = v_single*np.exp(-1j*2*np.pi*np.arange(len(v_single))*fdes*Ts)
-    #v_single = sg.resample_poly(v_single,np.rint(10**4),np.rint((1/(1+fdes/fc))*(10**4)))
+    v = v[delval:delval+len(u)]
+    v = v[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
+    v = sg.resample_poly(v,2,Ns)
+    v = np.concatenate((v,np.zeros(Nplus*2)))
     
-    v_single = v_single[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
+    v_single = v[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
     v_single = sg.resample_poly(v_single,2,Ns)
     v_single = np.concatenate((v_single,np.zeros(Nplus*2))) # should occur after
     vk = v_single.reshape(1,-1) 
@@ -264,9 +269,9 @@ if __name__ == "__main__":
     np.save('data/dl/d_dl_imag.npy', np.imag(d))
 
     M_bf = int(5)
-    M_nobf = int(15)
+    M_nobf = int(10)
     N_bf = int(10)
-    N_nobf = int(45)
+    N_nobf = int(12)
     _, mse_nobf = dfe_matlab(vk_nobf, d, N_nobf, Nd, M_nobf)
     _, mse_bf = dfe_matlab(vk_bf, d, N_nobf, Nd, M_nobf)
     _, mse_bf_taps = dfe_matlab(vk_bf, d, N_bf, Nd, M_bf)

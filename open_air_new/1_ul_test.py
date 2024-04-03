@@ -86,6 +86,7 @@ def uplink(v,Fs,fs,fc,n_rx,bf):
     s_tx = s_tx.reshape(-1,1) 
 
     r = testbed(s_tx,1,n_rx,Fs) # s-by-nrx
+    r_multi = np.copy(r)
     if bf==1:
         n_path = 2
         d0 = 0.05 
@@ -148,34 +149,55 @@ def uplink(v,Fs,fs,fc,n_rx,bf):
         else:
             y = np.copy(vk).T
             bf_flag = False
-    
+    if bf == 3:
+        n_path = n_rx
+        d0 = 0.05 
+        c = 343
+        M = n_rx
+        r_fft = np.fft.fft(r, axis=0)
+        freqs = np.fft.fftfreq(len(r[:, 0]), 1/fs) # this is the same as 1/Fs with no adjustment
+        freqs = freqs*Fs/fs
+        index = np.where((freqs >= fc-R/2) & (freqs < fc+R/2))[0]
+        N = len(index) 
+        fk = freqs[index]      
+        yk = r_fft[index, :]    # N*M
+        y_tilde = np.zeros((N,n_rx), dtype=complex)
+        for k in range(N):
+            y_tilde[k, :] = np.ones(n_rx).T @ yk[k, :].T
+            for i in range(n_rx):
+                e_pu = np.zeros((n_rx,1))
+                e_pu[i, 0] = 1
+                wk = e_pu
+                y_tilde[k, i] = wk.conj().T @ yk[k, :].T
+        y_fft = np.zeros((len(r[:, 0]), n_rx), complex)
+        y_fft[index, :] = y_tilde
+        y = np.fft.ifft(y_fft, axis=0)
+        r_multi = np.copy(y)
     if bf==1 and bf_flag == True:
         r_multi = np.copy(y)
+        a = 0
     else:
-        r_multi = np.copy(r)
-        np.save('data/ul/r_multi_real.npy', np.real(r_multi))
-        np.save('data/ul/r_multi_imag.npy', np.imag(r_multi))
+        #np.save('data/ul/r_multi_real.npy', np.real(r_multi))
+        #np.save('data/ul/r_multi_imag.npy', np.imag(r_multi))
+        a = 0
         ang_est = 0
         S_theta = np.zeros(200)
     print(np.shape(r_multi))
+
     for i in range(len(r_multi[0,:])):
         r = np.squeeze(r_multi[:, i])
-        vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
-        v = sg.resample_poly(vr,1,int(Fs/fs))
-
+        vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs) #Fs
+        v = sg.resample_poly(vr,1,Fs/fs)
+        #v = sg.resample_poly(vr,1,4)
         vp = v[:len(up)+Nz*Ns]
-        delval,_ = fdel(vp,up)
-        #adj_len = delval+len(up)
-        #if adj_len > len(vp): 
-        #    delval = 0 # don't adjust with xcorr if it would otherwise ruin signal
+        delval,xvals = fdel(vp,up)
         vp1 = vp[delval:delval+len(up)]
         lendiff = len(up)-len(vp1)
         if lendiff > 0:
             vp1 = np.append(vp1, np.zeros(lendiff))
-        fde,_,_ = fdop(vp1,up,fs,12)
-        #if bf==0:
-        v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
-        v = sg.resample_poly(v,np.rint(10**4),np.rint((1/(1+fde/fc))*(10**4)))
+        #fde,_,_ = fdop(vp1,up,fs,12)
+        #v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
+        #v = sg.resample_poly(v,np.rint(10**4),np.rint((1/(1+fde/fc))*(10**4)))
         
         v = v[delval:delval+len(u)]
         v = v[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
@@ -338,9 +360,9 @@ if __name__ == "__main__":
     np.save('data/ul/S_theta.npy',S_theta)
     print("Angle Estimation: ", ang_est )
 
-    M_bf = int(10)
+    M_bf = int(5)
     M_nobf = int(10)
-    N_bf = int(12)
+    N_bf = int(10)
     N_nobf = int(12)
     _, mse_nobf = dfe_matlab(vk_nobf, d, N_nobf, Nd, M_nobf)
     _, mse_bf = dfe_matlab(vk_bf, d, N_nobf, Nd, M_nobf)
