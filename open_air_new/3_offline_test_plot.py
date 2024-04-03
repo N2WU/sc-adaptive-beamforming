@@ -99,8 +99,8 @@ if __name__ == "__main__":
     Nd = 3000
     
     # load
-    vk_dl_nobf_real = np.load('data/ul/vk_dl_bf_real.npy')
-    vk_dl_nobf_imag = np.load('data/ul/vk_dl_bf_imag.npy')
+    vk_dl_nobf_real = np.load('data/dl/vk_dl_bf_real.npy')
+    vk_dl_nobf_imag = np.load('data/dl/vk_dl_bf_imag.npy')
 
     vk_dl_bf_real = np.load('data/dl/vk_dl_nobf_real.npy')
     vk_dl_bf_imag = np.load('data/dl/vk_dl_nobf_imag.npy')
@@ -112,11 +112,11 @@ if __name__ == "__main__":
     d_dl = d_dl_real + 1j*d_dl_imag
     d_dl = d_dl.flatten()
 
-    vk_ul_bf_real = np.load('data/dl/vk_ul_bf_real.npy')
-    vk_ul_bf_imag = np.load('data/dl/vk_ul_bf_imag.npy')
+    vk_ul_bf_real = np.load('data/ul/vk_ul_bf_real.npy')
+    vk_ul_bf_imag = np.load('data/ul/vk_ul_bf_imag.npy')
     vk_ul_bf = vk_ul_bf_real + 1j*vk_ul_bf_imag
-    vk_ul_nobf_real = np.load('data/dl/vk_ul_nobf_real.npy')
-    vk_ul_nobf_imag = np.load('data/dl/vk_ul_nobf_imag.npy')
+    vk_ul_nobf_real = np.load('data/ul/vk_ul_nobf_real.npy')
+    vk_ul_nobf_imag = np.load('data/ul/vk_ul_nobf_imag.npy')
     vk_ul_nobf = vk_ul_nobf_real + 1j*vk_ul_nobf_imag
 
     d_ul_real = np.load('data/ul/d_ul_real.npy')
@@ -124,13 +124,13 @@ if __name__ == "__main__":
     d_ul = d_ul_real + 1j*d_ul_imag
     d_ul = d_ul.flatten()
 
-    S_theta = np.load('data/el/S_theta.npy') #archive_03_27_-10deg/
+    S_theta = np.load('data/ul/S_theta.npy') #archive_03_27_-10deg/
 
-    M_bf = int(10)
-    M_nobf = int(10)
-    N_bf = int(12)
-    N_nobf = int(12)
-    
+    M_bf = int(5)
+    M_nobf = int(20)
+    N_bf = int(10)
+    N_nobf = int(40)
+
     # DFE
     d_hat_ul_bf, mse_ul_bf = dfe_matlab(vk_ul_bf,d_ul,N_bf,Nd,M_bf)
     _, mse_ul_bf_sametaps = dfe_matlab(vk_ul_bf,d_ul,N_nobf,Nd,M_nobf)
@@ -144,36 +144,36 @@ if __name__ == "__main__":
     # uplink constellation diagram
     #plt.legend([r'BF, $N_{{FF}}=${}, $N_{{FB}}=${}'.format(N_bf, M_bf), 
         #r'BF, $N_{{FF}}=${}, $N_{{FB}}=${} '.format(N_nobf, M_nobf)])
-    
+    plt.figure()
     plt.subplot(1, 2, 1)
-    plt.scatter(np.real(d_hat_ul_nobf), np.imag(d_hat_ul_nobf), marker='x')
+    plt.scatter(np.real(d_hat_ul_nobf), np.imag(d_hat_ul_nobf), marker='x', alpha=0.5)
     plt.axis('square')
     plt.axis([-2, 2, -2, 2])
-    plt.title(r'UL No BF, $N_{{FF}}=${}, $N_{{FB}}=${}'.format(N_nobf, M_nobf))
+    plt.title(r'UL No BF, $N_{{FF}}=${}, $N_{{FB}}=${}, MSE={}'.format(N_nobf, M_nobf, round(mse_ul_nobf,2)))
     # uplink constellation diagram
     plt.subplot(1, 2, 2)
-    plt.scatter(np.real(d_hat_ul_bf), np.imag(d_hat_ul_bf), marker='x')
+    plt.scatter(np.real(d_hat_ul_bf), np.imag(d_hat_ul_bf), marker='x', alpha=0.5)
     plt.axis('square')
     plt.axis([-2, 2, -2, 2])
-    plt.title(r'UL BF, $N_{{FF}}=${}, $N_{{FB}}=${}'.format(N_bf, M_bf)) 
-    plt.show()
+    plt.title(r'UL BF, $N_{{FF}}=${}, $N_{{FB}}=${}, MSE={}'.format(N_bf, M_bf,round(mse_ul_bf,2))) 
     
     # downlink constellation diagram
+    plt.figure()
     plt.subplot(1, 2, 1)
-    plt.scatter(np.real(d_hat_dl_nobf), np.imag(d_hat_dl_nobf), marker='x')
+    plt.scatter(np.real(d_hat_dl_nobf), np.imag(d_hat_dl_nobf), marker='x', alpha=0.5)
     plt.axis('square')
     plt.axis([-2, 2, -2, 2])
-    plt.title(r'DL No BF, $N_{{FF}}=${}, $N_{{FB}}=${}'.format(N_nobf, M_nobf))
+    plt.title(r'DL No BF, $N_{{FF}}=${}, $N_{{FB}}=${}, MSE={}'.format(N_nobf, M_nobf, round(mse_dl_nobf,2)))
     # downlink constellation diagram
     plt.subplot(1, 2, 2)
-    plt.scatter(np.real(d_hat_dl_bf), np.imag(d_hat_dl_bf), marker='x')
+    plt.scatter(np.real(d_hat_dl_bf), np.imag(d_hat_dl_bf), marker='x', alpha=0.5)
     plt.axis('square')
     plt.axis([-2, 2, -2, 2])
-    plt.title(r'DL BF, $N_{{FF}}=${}, $N_{{FB}}=${}'.format(N_nobf, M_nobf)) 
-    plt.show()
+    plt.title(r'DL BF, $N_{{FF}}=${}, $N_{{FB}}=${}, MSE={}'.format(N_nobf, M_nobf, round(mse_dl_bf,2))) 
 
     # s(theta)
-    est_deg = np.load('data/ul/est_deg.npy')
+    est_deg = np.load('data/ul/ang_est.npy')
+    est_deg = np.reshape(est_deg, (-1,1))
     theta_start = -45
     theta_end = 45
     N_theta = 200
@@ -182,16 +182,17 @@ if __name__ == "__main__":
     true_angle = [-14.31, 13.90]
     plt.figure()
     plt.plot(deg_ax,S_theta)
-    for i in range(len(est_deg)):
+    for i in range(est_deg.size):
+            angle = est_deg[i][0]
             plt.axvline(x=true_angle[i], linestyle="--", color="red")
             plt.axvline(x=est_deg[i], linestyle="--", color="blue")
-            plt.text(est_deg[i]+2, np.max(S_theta), f'Est Angle={"{:.2f}".format(est_deg[i])}') #shorten to 2 {"{:.2f}".format(mse_ul_nobf)}
+            plt.text(est_deg[i]+2, np.max(S_theta), f'Est Angle={"{:.2f}".format(angle)}') #shorten to 2 {"{:.2f}".format(mse_ul_nobf)}
             plt.text(true_angle[i]+5, 1e23, f'True Angle={"{:.2f}".format(true_angle[i])}')
-    plt.title(r'$S(\theta)$ for 5 dB, M=12, $f_c=6.5$kHz, $d_0$=5cm: 2-Path Channel')
+    plt.title(r'$S(\theta)$ for Open-Air, M=12, $f_c=6.5$kHz, $d_0$=5cm: 2-Path Channel')
     plt.xlabel(r'Angle ($^\circ$)')
     plt.ylabel(r"$S(\theta)$, Magnitude$^2$")
     
-        # uplink/downlink MSE (could probably re-run with iterations)
+    # uplink/downlink MSE (could probably re-run with iterations)
     print("MSE UL No BF:", mse_ul_nobf)
     print("MSE UL BF:", mse_ul_bf)
     print("MSE UL BF Less Taps:", mse_ul_bf_sametaps)
