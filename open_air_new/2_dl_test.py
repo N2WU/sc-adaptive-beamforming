@@ -70,7 +70,7 @@ def testbed(s_tx,n_tx,n_rx,Fs):
         for ch in range(18,18+n_tx):
             tx[:,ch] = s_tx
         print("Transmitting...")
-        rx_raw = sd.playrec(tx * 0.05, samplerate=Fs, blocking=True)
+        rx_raw = sd.playrec(tx * 0.5, samplerate=Fs, blocking=True)
         rx = rx_raw[:,:n_rx]
         print("Received")
     else:
@@ -78,7 +78,7 @@ def testbed(s_tx,n_tx,n_rx,Fs):
         for ch in range(n_tx):
             tx[:,ch] = s_tx[:,ch]
         print("Transmitting...")
-        rx_raw = sd.playrec(tx * 0.05, samplerate=Fs, blocking=True)
+        rx_raw = sd.playrec(tx * 0.5, samplerate=Fs, blocking=True)
         rx = rx_raw[:,18:18+n_rx] #testbed specific
         print("Received")
     return rx
