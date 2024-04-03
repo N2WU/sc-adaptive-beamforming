@@ -126,10 +126,10 @@ if __name__ == "__main__":
 
     S_theta = np.load('data/ul/S_theta.npy') #archive_03_27_-10deg/
 
-    M_bf = int(5)
-    M_nobf = int(10)
-    N_bf = int(10)
-    N_nobf = int(12)
+    M_bf = int(15)
+    M_nobf = int(15)
+    N_bf = int(20)
+    N_nobf = int(20)
 
     # DFE
     d_hat_ul_bf, mse_ul_bf = dfe_matlab(vk_ul_bf,d_ul,N_bf,Nd,M_bf)
@@ -169,7 +169,7 @@ if __name__ == "__main__":
     plt.scatter(np.real(d_hat_dl_bf), np.imag(d_hat_dl_bf), marker='x', alpha=0.5)
     plt.axis('square')
     plt.axis([-2, 2, -2, 2])
-    plt.title(r'DL BF, $N_{{FF}}=${}, $N_{{FB}}=${}, MSE={}'.format(N_nobf, M_nobf, round(mse_dl_bf,2))) 
+    plt.title(r'DL BF, $N_{{FF}}=${}, $N_{{FB}}=${}, MSE={}'.format(N_bf, M_bf, round(mse_dl_bf,2))) 
 
     # s(theta)
     est_deg = np.load('data/ul/ang_est.npy')
