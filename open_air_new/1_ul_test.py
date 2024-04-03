@@ -99,8 +99,6 @@ def uplink(v,Fs,fs,fc,n_rx,bf):
     if N > 0:
         fk = freqs[index]      
         yk = r_fft[index, :]    # N*M
-        np.save('data/yk_real.npy', np.real(yk))
-        np.save('data/yk_imag.npy', np.imag(yk))
         theta_start = -45
         theta_end = 45
         N_theta = 200
@@ -126,7 +124,7 @@ def uplink(v,Fs,fs,fc,n_rx,bf):
         S_theta_peaks = S_theta[S_theta_peaks_idx] #S_theta
         theta_m_idx = np.argsort(S_theta_peaks)
         theta_m = theta_list[S_theta_peaks_idx[theta_m_idx[-n_path:]]]
-        print(theta_m/np.pi*180)
+        ang_est = np.rad2deg(theta_list[np.argmax(S_theta)])
 
         y_tilde = np.zeros((N,n_path), dtype=complex)
         for k in range(N):
@@ -151,12 +149,9 @@ def uplink(v,Fs,fs,fc,n_rx,bf):
         y = np.copy(vk).T
         bf_flag = False
     
-    est_deg = np.argmax(S_theta)
-    deg_ax = np.flip(deg_theta)
-    # deg_diff = np.abs(true_angle - deg_ax[est_deg])
-    if bf==1:
+    if bf==1 and bf_flag == True:
         r_multi = np.copy(y)
-    elif bf==0:
+    else:
         r_multi = np.copy(r)
     print(np.shape(r_multi))
     for i in range(len(r_multi[0,:])):
@@ -196,7 +191,7 @@ def uplink(v,Fs,fs,fc,n_rx,bf):
             v_multichannel = np.vstack((v_multichannel,v))
             lenvm = len(v_multichannel[0,:])
     vk = np.copy(v_multichannel)
-    return vk, wk, S_theta
+    return vk, ang_est, S_theta
 
 def dec4psk(x):
     xr = np.real(x)
@@ -207,10 +202,10 @@ def dec4psk(x):
     d = d/np.sqrt(2)
     return d
 
-def dfe_matlab(vk, d, Ns, Nd, M): 
+def dfe_matlab(vk, d, N, Nd, M): 
     K = len(vk[:,0]) # maximum
     Ns = 2
-    N = int(6 * Ns)
+    #N = int(6 * Ns)
     delta = 10**(-3)
     Nt = 4*(N+M)
     FS = 2
@@ -225,7 +220,7 @@ def dfe_matlab(vk, d, Ns, Nd, M):
     v = vk
 
     f = np.zeros((Nd,K),dtype=complex)
-
+    
     a = np.zeros(int(K*N), dtype=complex)
     b = np.zeros(M, dtype=complex)
     c = np.append(a, -b)
@@ -327,20 +322,26 @@ if __name__ == "__main__":
     v = np.copy(u)
 
     vk_nobf, _, _ = uplink(v,Fs,fs,fc,n_rx,0)
-    vk_bf, wk, S_theta = uplink(v,Fs,fs,fc,n_rx,1)
-    np.save('data/vk_ul_nobf_real.npy', np.real(vk_nobf))
-    np.save('data/vk_ul_nobf_imag.npy', np.imag(vk_nobf))
-    np.save('data/vk_ul_bf_real.npy', np.real(vk_bf))
-    np.save('data/vk_ul_bf_imag.npy', np.imag(vk_bf))
-    np.save('data/d_ul_real.npy', np.real(d))
-    np.save('data/d_ul_imag.npy', np.imag(d))
-    np.save('data/wk_real.npy',np.real(wk))
-    np.save('data/wk_imag.npy',np.imag(wk))
-    np.save('data/S_theta.npy',S_theta)
+    vk_bf, ang_est, S_theta = uplink(v,Fs,fs,fc,n_rx,1)
 
-    M = int(10)
-    d_hat, mse_nobf = dfe_matlab(vk_nobf, d, Ns, Nd, M)
-    d_hat, mse_bf = dfe_matlab(vk_bf, d, Ns, Nd, M)
+    np.save('data/ul/vk_ul_nobf_real.npy', np.real(vk_nobf))
+    np.save('data/ul/vk_ul_nobf_imag.npy', np.imag(vk_nobf))
+    np.save('data/ul/vk_ul_bf_real.npy', np.real(vk_bf))
+    np.save('data/ul/vk_ul_bf_imag.npy', np.imag(vk_bf))
+    np.save('data/ul/d_ul_real.npy', np.real(d))
+    np.save('data/ul/d_ul_imag.npy', np.imag(d))
+    np.save('data/ul/ang_est.npy', ang_est)
+    np.save('data/ul/S_theta.npy',S_theta)
+    print("Angle Estimation: ", ang_est )
 
-    print(mse_nobf)
-    print(mse_bf)
+    M_bf = int(5)
+    M_nobf = int(15)
+    N_bf = int(10)
+    N_nobf = int(45)
+    _, mse_nobf = dfe_matlab(vk_nobf, d, N_nobf, Nd, M_nobf)
+    _, mse_bf = dfe_matlab(vk_bf, d, N_nobf, Nd, M_nobf)
+    _, mse_bf_taps = dfe_matlab(vk_bf, d, N_bf, Nd, M_bf)
+
+    print("MSE No BF:", mse_nobf)
+    print("MSE BF:", mse_bf)
+    print("MSE BF Less Taps:", mse_bf_taps)

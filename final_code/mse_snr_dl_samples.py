@@ -467,7 +467,6 @@ if __name__ == "__main__":
         plt.title(r'MSE vs SNR Downlink, Varied $N_{FF}$ and $N_{FB}$ Taps')
         plt.legend([r'BF, $N_{{FF}}=${}, $N_{{FB}}=${}'.format(N_bf, M_bf), 
                     r'BF, $N_{{FF}}=${}, $N_{{FB}}=${} '.format(N_nobf, M_nobf)])
-
         
         plt.figure()
         for ind in range(len(snr_db)):
