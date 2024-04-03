@@ -127,9 +127,9 @@ if __name__ == "__main__":
     S_theta = np.load('data/ul/S_theta.npy') #archive_03_27_-10deg/
 
     M_bf = int(5)
-    M_nobf = int(20)
+    M_nobf = int(10)
     N_bf = int(10)
-    N_nobf = int(40)
+    N_nobf = int(12)
 
     # DFE
     d_hat_ul_bf, mse_ul_bf = dfe_matlab(vk_ul_bf,d_ul,N_bf,Nd,M_bf)
@@ -179,7 +179,7 @@ if __name__ == "__main__":
     N_theta = 200
     deg_theta = np.linspace(theta_start,theta_end,N_theta)
     deg_ax = deg_theta
-    true_angle = [-14.31, 13.90]
+    true_angle = [15]
     plt.figure()
     plt.plot(deg_ax,S_theta)
     for i in range(est_deg.size):
@@ -187,8 +187,8 @@ if __name__ == "__main__":
             plt.axvline(x=true_angle[i], linestyle="--", color="red")
             plt.axvline(x=est_deg[i], linestyle="--", color="blue")
             plt.text(est_deg[i]+2, np.max(S_theta), f'Est Angle={"{:.2f}".format(angle)}') #shorten to 2 {"{:.2f}".format(mse_ul_nobf)}
-            plt.text(true_angle[i]+5, 1e23, f'True Angle={"{:.2f}".format(true_angle[i])}')
-    plt.title(r'$S(\theta)$ for Open-Air, M=12, $f_c=6.5$kHz, $d_0$=5cm: 2-Path Channel')
+            plt.text(true_angle[i]+5, np.max(S_theta)/10, f'True Angle={"{:.2f}".format(true_angle[i])}')
+    plt.title(r'$S(\theta)$ for Open-Air, M=12, $f_c=6.5$kHz, $d_0$=5cm')
     plt.xlabel(r'Angle ($^\circ$)')
     plt.ylabel(r"$S(\theta)$, Magnitude$^2$")
     
