@@ -66,7 +66,7 @@ def testbed(s_tx,n_tx,n_rx,Fs):
         for ch in range(18,18+n_tx):
             tx[:,ch] = s_tx
         print("Transmitting...")
-        rx_raw = sd.playrec(tx * 0.1, samplerate=Fs, blocking=True)
+        rx_raw = sd.playrec(tx * 0.5, samplerate=Fs, blocking=True)
         rx = rx_raw[:,:n_rx]
         print("Received")
     else:
@@ -74,7 +74,7 @@ def testbed(s_tx,n_tx,n_rx,Fs):
         for ch in range(n_tx):
             tx[:,ch] = s_tx[:,ch]
         print("Transmitting...")
-        rx_raw = sd.playrec(tx * 0.1, samplerate=Fs, blocking=True)
+        rx_raw = sd.playrec(tx * 0.5, samplerate=Fs, blocking=True)
         rx = rx_raw[:,18:18+n_rx] #testbed specific
         print("Received")
     return rx
@@ -86,73 +86,77 @@ def uplink(v,Fs,fs,fc,n_rx,bf):
     s_tx = s_tx.reshape(-1,1) 
 
     r = testbed(s_tx,1,n_rx,Fs) # s-by-nrx
-    n_path = 2
-    d0 = 0.05 
-    c = 343
-    M = n_rx
-    r_fft = np.fft.fft(r, axis=0)
-    freqs = np.fft.fftfreq(len(r[:, 0]), 1/fs) # this is the same as 1/Fs with no adjustment
-    freqs = freqs*Fs/fs
-    np.save('data/freqs.npy', freqs) 
-    index = np.where((freqs >= fc-R/2) & (freqs < fc+R/2))[0]
-    N = len(index) #uhh???
-    if N > 0:
-        fk = freqs[index]      
-        yk = r_fft[index, :]    # N*M
-        theta_start = -45
-        theta_end = 45
-        N_theta = 200
-        deg_theta = np.linspace(theta_start,theta_end,N_theta)
-        S_theta = np.zeros((N_theta,))
-        S_theta3D = np.zeros((N_theta, N))
-        theta_start = np.deg2rad(theta_start)
-        theta_end = np.deg2rad(theta_end)
-        theta_list = np.linspace(theta_start, theta_end, N_theta)
-        for n_theta, theta in enumerate(theta_list):
-            d_tau = np.sin(theta) * d0/c
-            # for k in range(N):
-            #     S_M = np.exp(-2j * np.pi * fk[k] * d_tau * np.arange(M).reshape(M,1))
-            #     S_theta[n_theta] += np.abs(np.vdot(S_M.T, yk[k, :].T))**2
-            S_M = np.exp(-2j * np.pi * d_tau * np.dot(fk.reshape(N, 1), np.arange(M).reshape(1, M)))    # N*M
-            SMxYk = np.einsum('ij,ji->i', S_M.conj(), yk.T)
-            S_theta[n_theta] = np.real(np.vdot(SMxYk, SMxYk)) #real part
-            S_theta[n_theta] = np.abs(S_theta[n_theta])**2 # doesn't necessarily make a difference
-            S_theta3D[n_theta, :] = np.abs(SMxYk)**2
+    if bf==1:
+        n_path = 2
+        d0 = 0.05 
+        c = 343
+        M = n_rx
+        r_fft = np.fft.fft(r, axis=0)
+        freqs = np.fft.fftfreq(len(r[:, 0]), 1/fs) # this is the same as 1/Fs with no adjustment
+        freqs = freqs*Fs/fs
+        index = np.where((freqs >= fc-R/2) & (freqs < fc+R/2))[0]
+        N = len(index) #uhh???
+        if N > 0:
+            fk = freqs[index]      
+            yk = r_fft[index, :]    # N*M
+            theta_start = -45
+            theta_end = 45
+            N_theta = 200
+            deg_theta = np.linspace(theta_start,theta_end,N_theta)
+            S_theta = np.zeros((N_theta,))
+            S_theta3D = np.zeros((N_theta, N))
+            theta_start = np.deg2rad(theta_start)
+            theta_end = np.deg2rad(theta_end)
+            theta_list = np.linspace(theta_start, theta_end, N_theta)
+            for n_theta, theta in enumerate(theta_list):
+                d_tau = np.sin(theta) * d0/c
+                # for k in range(N):
+                #     S_M = np.exp(-2j * np.pi * fk[k] * d_tau * np.arange(M).reshape(M,1))
+                #     S_theta[n_theta] += np.abs(np.vdot(S_M.T, yk[k, :].T))**2
+                S_M = np.exp(-2j * np.pi * d_tau * np.dot(fk.reshape(N, 1), np.arange(M).reshape(1, M)))    # N*M
+                SMxYk = np.einsum('ij,ji->i', S_M.conj(), yk.T)
+                S_theta[n_theta] = np.real(np.vdot(SMxYk, SMxYk)) #real part
+                S_theta[n_theta] = np.abs(S_theta[n_theta])**2 # doesn't necessarily make a difference
+                S_theta3D[n_theta, :] = np.abs(SMxYk)**2
 
-        # n_path = 1 # number of path
-        S_theta_peaks_idx, _ = sg.find_peaks(S_theta, height=0) #S_theta
-        S_theta_peaks = S_theta[S_theta_peaks_idx] #S_theta
-        theta_m_idx = np.argsort(S_theta_peaks)
-        theta_m = theta_list[S_theta_peaks_idx[theta_m_idx[-n_path:]]]
-        ang_est = np.rad2deg(theta_list[np.argmax(S_theta)])
+            # n_path = 1 # number of path
+            S_theta_peaks_idx, _ = sg.find_peaks(S_theta, height=0) #S_theta
+            S_theta_peaks = S_theta[S_theta_peaks_idx] #S_theta
+            theta_m_idx = np.argsort(S_theta_peaks)
+            theta_m = theta_list[S_theta_peaks_idx[theta_m_idx[-n_path:]]]
+            ang_est = np.rad2deg(theta_list[np.argmax(S_theta)])
 
-        y_tilde = np.zeros((N,n_path), dtype=complex)
-        for k in range(N):
-            d_tau_m = np.sin(theta_m) * d0/c
-            try:
-                d_tau_new = d_tau_m.reshape(1, n_path)
-            except:
-                d_tau_new = np.append(d_tau_m, [0])
-                d_tau_new = d_tau_new.reshape(1, n_path)
-            Sk = np.exp(-2j * np.pi * fk[k] * np.arange(M).reshape(M, 1) @ d_tau_new)
-            for i in range(n_path):
-                e_pu = np.zeros((n_path,1))
-                e_pu[i, 0] = 1
-                wk = Sk @ np.linalg.inv(Sk.conj().T @ Sk) @ e_pu
-                y_tilde[k, i] = wk.conj().T @ yk[k, :].T
+            y_tilde = np.zeros((N,n_path), dtype=complex)
+            for k in range(N):
+                d_tau_m = np.sin(theta_m) * d0/c
+                try:
+                    d_tau_new = d_tau_m.reshape(1, n_path)
+                except:
+                    d_tau_new = np.append(d_tau_m, [0])
+                    d_tau_new = d_tau_new.reshape(1, n_path)
+                Sk = np.exp(-2j * np.pi * fk[k] * np.arange(M).reshape(M, 1) @ d_tau_new)
+                for i in range(n_path):
+                    e_pu = np.zeros((n_path,1))
+                    e_pu[i, 0] = 1
+                    wk = Sk @ np.linalg.inv(Sk.conj().T @ Sk) @ e_pu
+                    y_tilde[k, i] = wk.conj().T @ yk[k, :].T
 
-        y_fft = np.zeros((len(r[:, 0]), n_path), complex)
-        y_fft[index, :] = y_tilde
-        y = np.fft.ifft(y_fft, axis=0)
-        bf_flag = True
-    else:
-        y = np.copy(vk).T
-        bf_flag = False
+            y_fft = np.zeros((len(r[:, 0]), n_path), complex)
+            y_fft[index, :] = y_tilde
+            y = np.fft.ifft(y_fft, axis=0)
+            bf_flag = True
+        else:
+            y = np.copy(vk).T
+            bf_flag = False
     
     if bf==1 and bf_flag == True:
         r_multi = np.copy(y)
     else:
         r_multi = np.copy(r)
+        np.save('data/ul/r_multi_real.npy', np.real(r_multi))
+        np.save('data/ul/r_multi_imag.npy', np.imag(r_multi))
+        ang_est = 0
+        S_theta = np.zeros(200)
     print(np.shape(r_multi))
     for i in range(len(r_multi[0,:])):
         r = np.squeeze(r_multi[:, i])
@@ -161,17 +165,17 @@ def uplink(v,Fs,fs,fc,n_rx,bf):
 
         vp = v[:len(up)+Nz*Ns]
         delval,_ = fdel(vp,up)
-        adj_len = delval+len(up)
-        if adj_len > len(vp): 
-            delval = 0 # don't adjust with xcorr if it would otherwise ruin signal
+        #adj_len = delval+len(up)
+        #if adj_len > len(vp): 
+        #    delval = 0 # don't adjust with xcorr if it would otherwise ruin signal
         vp1 = vp[delval:delval+len(up)]
         lendiff = len(up)-len(vp1)
         if lendiff > 0:
             vp1 = np.append(vp1, np.zeros(lendiff))
         fde,_,_ = fdop(vp1,up,fs,12)
         #if bf==0:
-            #v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
-            #v = sg.resample_poly(v,np.rint(10**4),np.rint((1/(1+fde/fc))*(10**4)))
+        v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
+        v = sg.resample_poly(v,np.rint(10**4),np.rint((1/(1+fde/fc))*(10**4)))
         
         v = v[delval:delval+len(u)]
         v = v[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
@@ -217,7 +221,7 @@ def dfe_matlab(vk, d, N, Nd, M):
     Lbf = 0.99
     Nplus = 6
 
-    v = vk
+    v = np.copy(vk)
 
     f = np.zeros((Nd,K),dtype=complex)
     
@@ -334,10 +338,10 @@ if __name__ == "__main__":
     np.save('data/ul/S_theta.npy',S_theta)
     print("Angle Estimation: ", ang_est )
 
-    M_bf = int(5)
-    M_nobf = int(15)
-    N_bf = int(10)
-    N_nobf = int(45)
+    M_bf = int(10)
+    M_nobf = int(10)
+    N_bf = int(12)
+    N_nobf = int(12)
     _, mse_nobf = dfe_matlab(vk_nobf, d, N_nobf, Nd, M_nobf)
     _, mse_bf = dfe_matlab(vk_bf, d, N_nobf, Nd, M_nobf)
     _, mse_bf_taps = dfe_matlab(vk_bf, d, N_bf, Nd, M_bf)
