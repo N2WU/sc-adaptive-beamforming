@@ -161,7 +161,7 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
         if lendiff > 0:
             vp1 = np.append(vp1, np.zeros(lendiff))
         fde,_,_ = fdop(vp1,up,fs,12)
-        if bf == 0:
+        if bf == 1:
             v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
             v = sg.resample_poly(v,np.rint(10**4),np.rint((1/(1+fde/fc))*(10**4)))
         
