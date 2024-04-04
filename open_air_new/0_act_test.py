@@ -37,7 +37,7 @@ if __name__ == "__main__":
     n_rx = 1
 
     t = np.linspace(0, duration, num=duration*fs)
-    y = np.cos(2 * np.pi * 5e3 * t)
+    y = np.cos(2 * np.pi * 6.5e3 * t)
 
     if n_tx == 1:
         y = y.reshape(-1,1)
