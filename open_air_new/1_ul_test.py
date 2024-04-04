@@ -177,8 +177,8 @@ def uplink(v,Fs,fs,fc,n_rx,bf):
         r_multi = np.copy(y)
         a = 0
     else:
-        #np.save('data/ul/r_multi_real.npy', np.real(r_multi))
-        #np.save('data/ul/r_multi_imag.npy', np.imag(r_multi))
+        np.save('data/ul/r_multi_real.npy', np.real(r_multi))
+        np.save('data/ul/r_multi_imag.npy', np.imag(r_multi))
         a = 0
         ang_est = 0
         S_theta = np.zeros(200)

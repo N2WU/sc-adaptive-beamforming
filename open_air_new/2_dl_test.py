@@ -70,7 +70,7 @@ def testbed(s_tx,n_tx,n_rx,Fs):
         for ch in range(18,18+n_tx):
             tx[:,ch] = s_tx
         print("Transmitting...")
-        rx_raw = sd.playrec(tx * 0.1, samplerate=Fs, blocking=True)
+        rx_raw = sd.playrec(tx * 0.05, samplerate=Fs, blocking=True)
         rx = rx_raw[:,:n_rx]
         print("Received")
     else:
@@ -78,7 +78,7 @@ def testbed(s_tx,n_tx,n_rx,Fs):
         for ch in range(n_tx):
             tx[:,ch] = s_tx[:,ch]
         print("Transmitting...")
-        rx_raw = sd.playrec(tx * 0.1, samplerate=Fs, blocking=True)
+        rx_raw = sd.playrec(tx * 0.05, samplerate=Fs, blocking=True)
         rx = rx_raw[:,18:18+n_rx] #testbed specific
         print("Received")
     return rx
@@ -87,6 +87,8 @@ def downlink(v_dl,ang_est,el_spacing,R,fc,fs,n_tx,n_rx,bfdl):
     vs = sg.resample_poly(v_dl,Fs,fs)
     s_d = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
     delays = np.rint(Fs * el_spacing/343 * np.sin(np.deg2rad(ang_est))*np.arange(n_tx)).astype(int)
+    delays = np.abs(delays)
+    delays = np.flip(delays)
     s_tx = np.zeros((n_tx,int(np.amax(delays) + len(s_d))))
     # apply wk here
     if bfdl == 1:
@@ -94,6 +96,7 @@ def downlink(v_dl,ang_est,el_spacing,R,fc,fs,n_tx,n_rx,bfdl):
             delay = delays[i]
             s_tx[i,delay:delay+len(s_d)] = s_d
     elif bfdl == 0:
+        s_tx = np.zeros((n_tx,len(s_d)))
         s_tx[0,:len(s_d)] = n_tx * s_d # equal power but in one element
 
     r = testbed(np.real(s_tx.T),n_tx,n_rx,Fs) # s-by-nrx
