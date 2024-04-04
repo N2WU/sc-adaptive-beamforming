@@ -97,7 +97,8 @@ def downlink(v_dl,ang_est,el_spacing,R,fc,fs,n_tx,n_rx,bfdl):
             s_tx[i,delay:delay+len(s_d)] = s_d
     elif bfdl == 0:
         s_tx = np.zeros((n_tx,len(s_d)))
-        s_tx[0,:len(s_d)] = n_tx * s_d # equal power but in one element
+        for i in range(n_tx):
+            s_tx[i,:len(s_d)] = s_d # equal power but in one element
 
     r = testbed(np.real(s_tx.T),n_tx,n_rx,Fs) # s-by-nrx
 
