@@ -143,10 +143,12 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
         y_fft[index, :] = y_tilde
         y = np.fft.ifft(y_fft, axis=0)
         r_multi = np.copy(y)
-        """
+        
         est_deg = theta_m*180/np.pi
         deg_ax = deg_theta
-        true_angle = [-14.31, 13.90]
+        center = d0+d0*n_rx/2
+        true_x = center + np.asarray([5, -5])
+        true_angle = np.rad2deg(np.arctan(true_x/20))
         r_multi = np.copy(y) 
         plt.plot(deg_ax,S_theta)
         for i in range(len(est_deg)):
@@ -158,7 +160,6 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
         plt.xlabel(r'Angle ($^\circ$)')
         plt.ylabel(r"$S(\theta)$, Magnitude$^2$")
         plt.show()
-        """
     elif bf ==0:
         ang_est = 0
     delvals = np.zeros((n_rx,1024))
