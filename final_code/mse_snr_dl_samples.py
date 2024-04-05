@@ -150,6 +150,7 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
         true_x = center + np.asarray([5, -5])
         true_angle = np.rad2deg(np.arctan(true_x/20))
         r_multi = np.copy(y) 
+        """
         plt.plot(deg_ax,S_theta)
         for i in range(len(est_deg)):
             plt.axvline(x=true_angle[i], linestyle="--", color="red")
@@ -160,6 +161,7 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
         plt.xlabel(r'Angle ($^\circ$)')
         plt.ylabel(r"$S(\theta)$, Magnitude$^2$")
         plt.show()
+        """
     elif bf ==0:
         ang_est = 0
     delvals = np.zeros((n_rx,1024))
@@ -175,9 +177,9 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
         lendiff = len(up)-len(vp1)
         if lendiff > 0:
             vp1 = np.append(vp1, np.zeros(lendiff))
-        fde,_,_ = fdop(vp1,up,fs,12)
-        v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
-        v = sg.resample_poly(v,np.rint(10**4),np.rint((1/(1+fde/fc))*(10**4)))
+        #fde,_,_ = fdop(vp1,up,fs,12)
+        #v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
+        #v = sg.resample_poly(v,np.rint(10**4),np.rint((1/(1+fde/fc))*(10**4)))
         
         v = v[delval:delval+len(u)]
         v = v[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
@@ -210,7 +212,9 @@ def transmit_dl(v_dl,ang_est,snr,n_rx,el_spacing,R,fc,fs,bfdl):
             delay = delays[i]
             s_tx[i,delay:delay+len(s_d)] = s_d
     elif bfdl == 0:
-        s_tx[0,:len(s_d)] = n_rx * s_d # equal power but in one element   
+        s_tx = np.zeros((n_rx,len(s_d)))
+        for i in range(n_rx):
+            s_tx[0,:len(s_d)] = s_d # equal power but in one element   
     x_rx = np.array([5])
     y_rx = np.array([20])
     c = 343
@@ -241,9 +245,9 @@ def transmit_dl(v_dl,ang_est,snr,n_rx,el_spacing,R,fc,fs,bfdl):
     vps = v_single[:len(up)+Nz*Ns]
     delvals,_ = fdel(vps,up)
     vp1s = vps[delvals:delvals+len(up)]
-    fdes,_,_ = fdop(vp1s,up,fs,12)
-    v_single = v_single*np.exp(-1j*2*np.pi*np.arange(len(v_single))*fdes*Ts)
-    v_single = sg.resample_poly(v_single,np.rint(10**4),np.rint((1/(1+fdes/fc))*(10**4)))
+    #fdes,_,_ = fdop(vp1s,up,fs,12)
+    #v_single = v_single*np.exp(-1j*2*np.pi*np.arange(len(v_single))*fdes*Ts)
+    #v_single = sg.resample_poly(v_single,np.rint(10**4),np.rint((1/(1+fdes/fc))*(10**4)))
     
     v_single = v_single[delvals:delvals+len(u)]
     v_single = v_single[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
@@ -276,7 +280,7 @@ def dfe_matlab(vk, d, N, Nd, M):
     Lbf = 0.99
     Nplus = 6
 
-    v = vk
+    v = np.copy(vk)
 
     f = np.zeros((Nd,K),dtype=complex)
     
@@ -385,17 +389,23 @@ if __name__ == "__main__":
     snr_db = np.array([5, 10, 15, 20]) #, 15])
     mse = np.zeros_like(snr_db)
     mse_dl_bf = np.zeros_like(snr_db)
-    M_nobf = int(15)
+    M_nobf = int(10)
     M_bf = int(5)
-    N_nobf = int(45)
-    N_bf = int(10)
+    N_nobf = int(20)
+    N_bf = int(12)
+
     d_hat_cum_nobf = np.zeros((len(snr_db),Nd-(4*(N_nobf+M_nobf))-1), dtype=complex)
-    d_hat_dl_cum_bf = np.zeros((len(snr_db),Nd-(4*(N_bf+M_bf))-1), dtype=complex)
-    d_hat_dl_cum_nobf = np.zeros((len(snr_db),Nd-(4*(N_nobf+M_nobf))-1), dtype=complex)
-    mse_dl_nobf = np.zeros_like(snr_db)
+    d_hat_ul_cum_bf = np.zeros((len(snr_db),Nd-(4*(N_nobf+M_nobf))-1), dtype=complex)
+    d_hat_ul_cum_nobf = np.zeros((len(snr_db),Nd-(4*(N_nobf+M_nobf))-1), dtype=complex)
+    mse_ul_nobf = np.zeros_like(snr_db)
+    d_hat_ul_cum_bf_taps = np.zeros((len(snr_db),Nd-(4*(N_bf+M_bf))-1), dtype=complex)
+    mse_ul_bf_taps = np.zeros_like(snr_db)
+    mse_ul_bf = np.zeros_like(snr_db)
 
     mse_wk = np.zeros_like(snr_db)
-    d_hat_cum_bf = np.zeros((len(snr_db),Nd-(4*(N_bf+M_bf))-1), dtype=complex)
+    d_hat_cum_bf = np.zeros((len(snr_db),Nd-(4*(N_nobf+M_nobf))-1), dtype=complex)
+    mse_wk_taps = np.zeros_like(snr_db)
+    d_hat_cum_bf_taps = np.zeros((len(snr_db),Nd-(4*(N_bf+M_bf))-1), dtype=complex)
     deg_diff_cum = np.zeros_like(mse,dtype=float)
 
     load = False
@@ -405,41 +415,53 @@ if __name__ == "__main__":
     Ns = 7
     Nplus = 4
     # generate rx signal with ISI
-    for ind in range(len(snr_db)):
-        for bf in beamform:    
-            #for repeat in range(4):
-            snr = 10**(0.1 * snr_db[ind])
-            d0 = el_spacing
-            v = np.copy(u) #np.zeros(len(u), dtype=complex)
-            v /= np.sqrt(pwr(v))
-            v_dl = np.copy(v)
-            vk, ang_est, deg_diff = transmit(v,snr,Fs,fs,fc,n_rx,d0,bf) # this already does rough phase alignment
-            deg_diff_cum[ind] = deg_diff
-            print("transmit complete")
-
-            M = int(10)
-
-            if bf == 1:
-                d_hat_wk, mse_out_wk = dfe_matlab(vk, d, N_bf, Nd, M_bf)
-                d_hat_cum_bf[ind,:] = d_hat_wk
-                mse_wk[ind] = mse_out_wk
+    #for ind in range(len(snr_db)):
+    snr = 10**(0.1 * snr_db[0])
+    d0 = el_spacing
+    v = np.copy(u) #np.zeros(len(u), dtype=complex)
+    v /= np.sqrt(pwr(v))
+    v_dl = np.copy(v)
+    #for bf in beamform:    
+    #    if bf == 1:
+    #vk_bf1, ang_est, deg_diff = transmit(v,snr,Fs,fs,fc,n_rx,d0,1) # this already does rough phase alignment
+                #vk_bf = np.copy(vk_bf1)
+                #d_hat_wk, mse_out_wk = dfe_matlab(vk_bf, d, N_nobf, Nd, M_nobf)
+                #d_hat_cum_bf[ind,:] = d_hat_wk
+                #mse_wk[ind] = mse_out_wk
+                #vk_bf_taps = np.copy(vk_bf)
+                #d_hat_wk_taps, mse_out_taps = dfe_matlab(vk_bf_taps, d, N_bf, Nd, M_bf)
+                #d_hat_cum_bf_taps[ind,:] = d_hat_wk_taps
+                #mse_wk_taps[ind] = mse_out_taps
+    """
             elif bf == 0:
                 #vk = 1/n_rx * np.sum(vk[::2,:],axis=0)
                 #vk = np.reshape(vk,(1,-1))
-                d_hat, mse_out = dfe_matlab(vk, d, N_nobf, Nd, M_nobf)
+                vk_nobf1, ang_est, deg_diff = transmit(v,snr,Fs,fs,fc,n_rx,d0,bf) # this already does rough phase alignment
+                vk_nobf = np.copy(vk_nobf1)
+                d_hat, mse_out = dfe_matlab(vk_nobf, d, N_nobf, Nd, M_nobf)
                 d_hat_cum_nobf[ind,:] = d_hat
                 mse[ind] = mse_out
+    """
+        #if downlink: # ouch
+    for ind in range(len(snr_db)):
+        snr = 10**(0.1 * snr_db[ind])      
+        vk_nobf, ang_est, deg_diff = transmit(v,snr,Fs,fs,fc,n_rx,d0,0)
+        d_hat_ul_nobf, mse = dfe_matlab(vk_nobf, d, N_nobf, Nd, M_nobf)
+        d_hat_ul_cum_nobf[ind,:] = d_hat_ul_nobf
+        mse_ul_nobf[ind] = mse
+    for ind in range(len(snr_db)):
+        snr = 10**(0.1 * snr_db[ind])    
+        vk_bf, ang_est, deg_diff = transmit(v,snr,Fs,fs,fc,n_rx,d0,1)
+        d_hat_ul_bf, mse = dfe_matlab(vk_bf, d, N_nobf, Nd, M_nobf)
+        d_hat_ul_cum_bf[ind,:] = d_hat_ul_bf
+        mse_ul_bf[ind] = mse
+    for ind in range(len(snr_db)):
+        snr = 10**(0.1 * snr_db[ind])    
+        vk_bf_taps, ang_est, deg_diff = transmit(v,snr,Fs,fs,fc,n_rx,d0,1)
+        d_hat_ul_bf_taps, mse = dfe_matlab(vk_bf_taps, d, N_bf, Nd, M_bf)
+        d_hat_ul_cum_bf_taps[ind,:] = d_hat_ul_bf_taps
+        mse_ul_bf_taps[ind] = mse
 
-        if downlink: # ouch
-            v_single_nobf = transmit_dl(v_dl,ang_est,snr,n_rx,el_spacing,R,fc,fs,0)
-            d_hat_dl_nobf, mse_out_dl_nobf = dfe_matlab(v_single_nobf, d, N_nobf, Nd, M_nobf)
-
-            v_single_bf = transmit_dl(v_dl,ang_est,snr,n_rx,el_spacing,R,fc,fs,1)
-            d_hat_dl_bf, mse_out_dl = dfe_matlab(v_single_bf, d, N_bf, Nd, M_bf)
-            mse_dl_bf[ind] = mse_out_dl
-            d_hat_dl_cum_bf[ind,:] = d_hat_dl_bf
-            mse_dl_nobf[ind] = mse_out_dl_nobf
-            d_hat_dl_cum_nobf[ind,:] = d_hat_dl_nobf
     """
     for ind in range(len(mse)):
         # plot const
@@ -450,31 +472,56 @@ if __name__ == "__main__":
         plt.axis('square')
         plt.axis([-2, 2, -2, 2])
         plt.title(f'SNR={snr_db[ind]} dB, M={n_rx}, fc={fc}, d0={d0}') #(f'd0={d_lambda[ind]}'r'$\lambda$') 
+    """
+        #fig1, ax1 = plt.subplots()
     
-    fig, ax = plt.subplots()
-    ax.plot(snr_db,mse,'-o')
-    ax.plot(snr_db,mse_wk,'-o',color="orange")
-    ax.set_xlabel(r'SNR (dB)')
-    ax.set_ylabel('MSE (dB)')
-    ax.set_title(r'UL MSE, M=12, d0=0.05, fc=6.5 kHz, $N_{FF}=25, N_{FB}=$10')
-    ax.legend(['MRC Only','Beamforming'])
+    plt.figure()
+    plt.plot(snr_db,mse_ul_nobf,'-o',color='blue')
+    plt.plot(snr_db,mse_ul_bf_taps,'-o',color='green' )
+    plt.plot(snr_db,mse_ul_bf,'-o', color='orange')
+    plt.xlabel(r'SNR (dB)')
+    plt.ylabel('MSE (dB)')
+    plt.title(r'MSE vs SNR Uplink, Varied $N_{FF}$ and $N_{FB}$ Taps')
+    plt.legend([r'No BF, $N_{{FF}}=${}, $N_{{FB}}=${}'.format(N_nobf, M_nobf),
+                r'BF, $N_{{FF}}=${}, $N_{{FB}}=${}'.format(N_bf, M_bf),
+                r'BF, $N_{{FF}}=${}, $N_{{FB}}=${}'.format(N_nobf, M_nobf)]) 
+    plt.figure()
+    for ind in range(len(snr_db)):
+        plt.subplot(2, 2, int(ind+1))
+        plt.scatter(np.real(d_hat_ul_cum_nobf[ind,:]), np.imag(d_hat_ul_cum_nobf[ind,:]), marker='x', alpha=0.5, color='blue')
+        plt.scatter(np.real(d_hat_ul_cum_bf_taps[ind,:]), np.imag(d_hat_ul_cum_bf_taps[ind,:]), marker='x', alpha=0.5, color='green')
+        plt.axis('square')
+        plt.axis([-2, 2, -2, 2])
+        plt.xticks([],[])
+        plt.yticks([],[])
+        if ind == 2 or 3:
+            plt.xlabel("In-Phase")
+        elif ind== 0 or 1:
+            plt.xlabel("")
+        plt.ylabel("Quadrature")
+        plt.legend([r'No BF, $N_{{FF}}=${}, $N_{{FB}}=${}'.format(N_nobf, M_nobf)
+                    ,r'BF, $N_{{FF}}=${}, $N_{{FB}}=${}'.format(N_bf, M_bf)])
+        plt.title(r'Uplink, SNR={} dB'.format(snr_db[ind]))
+    
+    plt.show()
     """
     if downlink:
         #fig1, ax1 = plt.subplots()
         plt.figure()
-        plt.plot(snr_db,mse_dl_bf,'-o', color='orange')
         plt.plot(snr_db,mse_dl_nobf,'-o',color='blue')
+        plt.plot(snr_db,mse_dl_bf_taps,'-o',color='green' )
+        plt.plot(snr_db,mse_dl_bf,'-o', color='orange')
         plt.xlabel(r'SNR (dB)')
         plt.ylabel('MSE (dB)')
         plt.title(r'MSE vs SNR Downlink, Varied $N_{FF}$ and $N_{FB}$ Taps')
-        plt.legend([r'BF, $N_{{FF}}=${}, $N_{{FB}}=${}'.format(N_bf, M_bf), 
-                    r'No BF, $N_{{FF}}=${}, $N_{{FB}}=${} '.format(N_nobf, M_nobf)])
-        
+        plt.legend([r'No BF, $N_{{FF}}=${}, $N_{{FB}}=${}'.format(N_nobf, M_nobf),
+                    r'BF, $N_{{FF}}=${}, $N_{{FB}}=${}'.format(N_bf, M_bf),
+                    r'BF, $N_{{FF}}=${}, $N_{{FB}}=${}'.format(N_nobf, M_nobf)]) 
         plt.figure()
         for ind in range(len(snr_db)):
             plt.subplot(2, 2, int(ind+1))
-            plt.scatter(np.real(d_hat_dl_cum_bf[ind,:]), np.imag(d_hat_dl_cum_bf[ind,:]), marker='x', alpha=0.5, color='orange')
-            #plt.scatter(np.real(d_hat_dl_cum_nobf[ind,:]), np.imag(d_hat_dl_cum_nobf[ind,:]), marker='x', alpha=0.5, color='blue')
+            plt.scatter(np.real(d_hat_dl_cum_nobf[ind,:]), np.imag(d_hat_dl_cum_nobf[ind,:]), marker='x', alpha=0.5, color='blue')
+            plt.scatter(np.real(d_hat_dl_cum_bf_taps[ind,:]), np.imag(d_hat_dl_cum_bf_taps[ind,:]), marker='x', alpha=0.5, color='green')
             plt.axis('square')
             plt.axis([-2, 2, -2, 2])
             plt.xticks([],[])
@@ -484,7 +531,10 @@ if __name__ == "__main__":
             elif ind== 0 or 1:
                 plt.xlabel("")
             plt.ylabel("Quadrature")
-            plt.title(f'DL, BF: SNR={snr_db[ind]} dB') #(f'd0={d_lambda[ind]}'r'$\lambda$')
+            plt.legend([r'No BF, $N_{{FF}}=${}, $N_{{FB}}=${}'.format(N_nobf, M_nobf)
+                        ,r'BF, $N_{{FF}}=${}, $N_{{FB}}=${}'.format(N_bf, M_bf)])
+            plt.title(r'Downlink, SNR={} dB'.format(snr_db[ind]))
         
         plt.show()
-    print(mse)
+    """
+    print(mse_wk)
