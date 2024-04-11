@@ -3,6 +3,33 @@ import scipy.signal as sg
 import matplotlib.pyplot as plt
 #plt.rcParams['text.usetex'] = True
 
+def rrcosfilter(N, alpha, Ts, fs):
+    T_delta = 1 / float(fs)
+    time_idx = ((np.arange(N) - N / 2)) * T_delta
+    sample_num = np.arange(N)
+    h_rrc = np.zeros(N, dtype=float)
+
+    for x in sample_num:
+        t = (x - N / 2) * T_delta
+        if t == 0.0:
+            h_rrc[x] = 1.0 - alpha + (4 * alpha / np.pi)
+        elif alpha != 0 and t == Ts / (4 * alpha):
+            h_rrc[x] = (alpha / np.sqrt(2)) * (
+                ((1 + 2 / np.pi) * (np.sin(np.pi / (4 * alpha))))
+                + ((1 - 2 / np.pi) * (np.cos(np.pi / (4 * alpha))))
+            )
+        elif alpha != 0 and t == -Ts / (4 * alpha):
+            h_rrc[x] = (alpha / np.sqrt(2)) * (
+                ((1 + 2 / np.pi) * (np.sin(np.pi / (4 * alpha))))
+                + ((1 - 2 / np.pi) * (np.cos(np.pi / (4 * alpha))))
+            )
+        else:
+            h_rrc[x] = (
+                np.sin(np.pi * t * (1 - alpha) / Ts)
+                + 4 * alpha * (t / Ts) * np.cos(np.pi * t * (1 + alpha) / Ts)
+            ) / (np.pi * t * (1 - (4 * alpha * t / Ts) * (4 * alpha * t / Ts)) / Ts)
+
+    return time_idx, h_rrc
 
 def rcos(alpha, Ns, trunc):
     tn = np.arange(-trunc * Ns, trunc * Ns+1) / Ns
@@ -178,13 +205,16 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
         vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs) #Fs
         v = sg.resample_poly(vr,1,Fs/fs)
         #v = sg.resample_poly(vr,1,4)
+        #g = rcos(alpha,Ns,trunc)
+        #if bf==1:
+        #    v = fil(v,g,Ns)
         vp = v[:len(up)+Nz*Ns]
         if i==0:
             delval,xvals = fdel(vp,up)
-        vp1 = vp[delval:delval+len(up)]
-        lendiff = len(up)-len(vp1)
-        if lendiff > 0:
-            vp1 = np.append(vp1, np.zeros(lendiff))
+        #vp1 = vp[delval:delval+len(up)]
+        #lendiff = len(up)-len(vp1)
+        #if lendiff > 0:
+        #    vp1 = np.append(vp1, np.zeros(lendiff))
         #fde,_,_ = fdop(vp1,up,fs,12)
         #v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
         #v = sg.resample_poly(v,np.rint(10**4),np.rint((1/(1+fde/fc))*(10**4)))
@@ -383,6 +413,7 @@ if __name__ == "__main__":
 
     g = rcos(alpha,Ns,trunc)
     up = fil(dp,g,Ns)
+
     lenu = len(up)
 
     d = np.sign(np.random.randn(Nd))+1j*np.sign(np.random.randn(Nd))

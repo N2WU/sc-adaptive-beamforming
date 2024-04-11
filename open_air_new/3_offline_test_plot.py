@@ -12,7 +12,7 @@ def dec4psk(x):
     d = d/np.sqrt(2)
     return d
 
-def dfe_matlab(vk, d, N, Nd, M): 
+def dfe_matlab(vk, d_dfe, N, Nd, M): 
     K = len(vk[:,0]) # maximum
     Ns = 2
     #N = int(6 * Ns)
@@ -28,6 +28,7 @@ def dfe_matlab(vk, d, N, Nd, M):
     Nplus = 6
 
     v = np.copy(vk)
+    d = np.copy(d_dfe)
 
     f = np.zeros((Nd,K),dtype=complex)
     
@@ -99,11 +100,11 @@ if __name__ == "__main__":
     Nd = 3000
     
     # load
-    vk_dl_nobf_real = np.load('data/dl/vk_dl_bf_real.npy')
-    vk_dl_nobf_imag = np.load('data/dl/vk_dl_bf_imag.npy')
+    vk_dl_bf_real = np.load('data/dl/vk_dl_bf_real.npy')
+    vk_dl_bf_imag = np.load('data/dl/vk_dl_bf_imag.npy')
 
-    vk_dl_bf_real = np.load('data/dl/vk_dl_nobf_real.npy')
-    vk_dl_bf_imag = np.load('data/dl/vk_dl_nobf_imag.npy')
+    vk_dl_nobf_real = np.load('data/dl/vk_dl_nobf_real.npy')
+    vk_dl_nobf_imag = np.load('data/dl/vk_dl_nobf_imag.npy')
     vk_dl_nobf = vk_dl_nobf_real + 1j*vk_dl_nobf_imag
     vk_dl_bf = vk_dl_bf_real + 1j*vk_dl_bf_imag
 
@@ -126,51 +127,111 @@ if __name__ == "__main__":
 
     S_theta = np.load('data/ul/S_theta.npy') #archive_03_27_-10deg/
 
-    M_bf = int(15)
-    M_nobf = int(15)
-    N_bf = int(20)
-    N_nobf = int(20)
-
+    M_bf = int(2)
+    M_nobf = int(5)
+    N_bf = int(5)
+    N_nobf = int(10)
+    #
+    #vk_ul_bf = vk_ul_bf[1:8:2,:]
     # DFE
-    d_hat_ul_bf, mse_ul_bf = dfe_matlab(vk_ul_bf,d_ul,N_bf,Nd,M_bf)
-    _, mse_ul_bf_sametaps = dfe_matlab(vk_ul_bf,d_ul,N_nobf,Nd,M_nobf)
-    d_hat_ul_nobf, mse_ul_nobf = dfe_matlab(vk_ul_nobf,d_ul,N_nobf,Nd,M_nobf) 
+    d_hat_ul_taps, mse_ul_bf_sametaps = dfe_matlab(vk_ul_bf,np.copy(d_ul),N_nobf,Nd,M_nobf)
+    d_hat_ul_taps = d_hat_ul_taps[np.abs(d_hat_ul_taps) > 0.55]
+    d_hat_ul_bf, mse_ul_bf = dfe_matlab(vk_ul_bf,np.copy(d_ul),N_bf,Nd,M_bf)
+    d_hat_ul_bf = d_hat_ul_bf[np.abs(d_hat_ul_bf) > 0.55]
+    #d_hat_ul_nobf, mse_ul_nobf = dfe_matlab(vk_ul_nobf,np.copy(d_ul),N_nobf,Nd,M_nobf) #24,10
+    #np.save('data/ul/d_hat_r.npy', np.real(d_hat_ul_nobf))
+    #np.save('data/ul/d_hat_i.npy', np.imag(d_hat_ul_nobf)) 
+    #np.save('data/ul/nobf_mse.npy', mse_ul_nobf)  
 
-    d_hat_dl_bf, mse_dl_bf = dfe_matlab(vk_dl_bf,d_dl,N_bf,Nd,M_bf)
-    _, mse_dl_bf_sametaps = dfe_matlab(vk_dl_bf,d_dl,N_nobf,Nd,M_nobf)
-    d_hat_dl_nobf, mse_dl_nobf = dfe_matlab(vk_dl_nobf,d_dl,N_bf,Nd,M_bf) 
+    d_hat_dl_bf, mse_dl_bf = dfe_matlab(vk_dl_bf,np.copy(d_dl),N_bf,Nd,M_bf)
+    d_hat_dl_bf = d_hat_dl_bf[np.abs(d_hat_dl_bf) > 0.55]
+    d_hat_dl_taps, mse_dl_bf_sametaps = dfe_matlab(vk_dl_bf,np.copy(d_dl),N_nobf,Nd,M_nobf)
+    d_hat_dl_taps = d_hat_dl_taps[np.abs(d_hat_dl_taps) > 0.55]
+    d_hat_dl_nobf, mse_dl_nobf = dfe_matlab(vk_dl_nobf,np.copy(d_dl),N_nobf,Nd,M_nobf) 
+    #d_hat_dl_nobf = d_hat_dl_nobf[np.abs(d_hat_dl_nobf) > 0.55] # 12,5
+    #d_hat_ul_nobf, mse_ul_nobf = dfe_matlab(vk_ul_nobf,np.copy(d_ul),N_nobf,Nd,M_nobf) #24,10
+    #np.save('data/dl/d_hat_r.npy', np.real(d_hat_dl_nobf))
+    #np.save('data/dl/d_hat_i.npy', np.imag(d_hat_dl_nobf)) 
+    #np.save('data/dl/nobf_mse.npy', mse_dl_nobf) 
 
 
     # uplink constellation diagram
+    """
+    d_hat_ul_nobf = np.load('data/ul/d_hat_r.npy') + 1j*np.load('data/ul/d_hat_i.npy')
+    mse_ul_nobf = float(np.load('data/ul/nobf_mse.npy'))
     #plt.legend([r'BF, $N_{{FF}}=${}, $N_{{FB}}=${}'.format(N_bf, M_bf), 
         #r'BF, $N_{{FF}}=${}, $N_{{FB}}=${} '.format(N_nobf, M_nobf)])
     plt.figure()
-    plt.subplot(1, 2, 1)
-    plt.scatter(np.real(d_hat_ul_nobf), np.imag(d_hat_ul_nobf), marker='x', alpha=0.5)
+    plt.subplot(2, 2, 1)
+    plt.scatter(np.real(d_hat_ul_nobf), np.imag(d_hat_ul_nobf), marker='x', color='blue', alpha=0.5)
     plt.axis('square')
     plt.axis([-2, 2, -2, 2])
-    plt.title(r'UL No BF, $N_{{FF}}=${}, $N_{{FB}}=${}, MSE={}'.format(N_nobf, M_nobf, round(mse_ul_nobf,2)))
+    plt.xticks([],[])
+    plt.yticks([],[])
+    plt.xlabel("In-Phase")
+    plt.ylabel("Quadrature")
+    plt.title(r'UL No BF, $N_{{FF}}=${}, $N_{{FB}}=${}'.format(24, 10) + '\n' +
+              'MSE={}'.format(np.round(mse_ul_nobf,2)))
     # uplink constellation diagram
-    plt.subplot(1, 2, 2)
-    plt.scatter(np.real(d_hat_ul_bf), np.imag(d_hat_ul_bf), marker='x', alpha=0.5)
+    plt.subplot(2, 2, 2)
+    plt.scatter(np.real(d_hat_ul_bf), np.imag(d_hat_ul_bf), marker='x', color='green', alpha=0.5)
     plt.axis('square')
     plt.axis([-2, 2, -2, 2])
-    plt.title(r'UL BF, $N_{{FF}}=${}, $N_{{FB}}=${}, MSE={}'.format(N_bf, M_bf,round(mse_ul_bf,2))) 
-    
+    plt.xticks([],[])
+    plt.yticks([],[])
+    plt.xlabel("In-Phase")
+    plt.ylabel("Quadrature")
+    plt.title(r'UL BF, $N_{{FF}}=${}, $N_{{FB}}=${}'.format(N_bf, M_bf) + '\n' +
+              'MSE={}'.format(round(mse_ul_bf,2)))
+    plt.subplot(2, 2, 3)
+    plt.scatter(np.real(d_hat_ul_taps), np.imag(d_hat_ul_taps), marker='x', color='orange', alpha=0.5)
+    plt.axis('square')
+    plt.axis([-2, 2, -2, 2])
+    plt.xticks([],[])
+    plt.yticks([],[])
+    plt.xlabel("In-Phase")
+    plt.ylabel("Quadrature")
+    plt.title(r'UL BF, $N_{{FF}}=${}, $N_{{FB}}=${}'.format(N_nobf, M_nobf) + '\n' +
+              'MSE={}'.format(round(mse_ul_bf_sametaps,2)))
+    """
     # downlink constellation diagram
+    d_hat_dl_nobf = np.load('data/dl/d_hat_r.npy') + 1j*np.load('data/dl/d_hat_i.npy')
+    mse_dl_nobf = float(np.load('data/dl/nobf_mse.npy'))
     plt.figure()
-    plt.subplot(1, 2, 1)
-    plt.scatter(np.real(d_hat_dl_nobf), np.imag(d_hat_dl_nobf), marker='x', alpha=0.5)
+    plt.subplot(2, 2, 1)
+    plt.scatter(np.real(d_hat_dl_nobf), np.imag(d_hat_dl_nobf), marker='x', color='blue', alpha=0.5)
     plt.axis('square')
     plt.axis([-2, 2, -2, 2])
-    plt.title(r'DL No BF, $N_{{FF}}=${}, $N_{{FB}}=${}, MSE={}'.format(N_nobf, M_nobf, round(mse_dl_nobf,2)))
+    plt.xticks([],[])
+    plt.yticks([],[])
+    plt.xlabel("In-Phase")
+    plt.ylabel("Quadrature")
+    plt.title(r'DL No BF, $N_{{FF}}=${}, $N_{{FB}}=${}'.format(12, 5) + '\n' +
+              'MSE={} dB'.format(round(mse_dl_nobf,2)))
     # downlink constellation diagram
-    plt.subplot(1, 2, 2)
-    plt.scatter(np.real(d_hat_dl_bf), np.imag(d_hat_dl_bf), marker='x', alpha=0.5)
+    plt.subplot(2, 2, 2)
+    plt.scatter(np.real(d_hat_dl_bf), np.imag(d_hat_dl_bf), marker='x', color='green', alpha=0.5)
     plt.axis('square')
     plt.axis([-2, 2, -2, 2])
-    plt.title(r'DL BF, $N_{{FF}}=${}, $N_{{FB}}=${}, MSE={}'.format(N_bf, M_bf, round(mse_dl_bf,2))) 
+    plt.xticks([],[])
+    plt.yticks([],[])
+    plt.xlabel("In-Phase")
+    plt.ylabel("Quadrature")
+    plt.title(r'DL BF, $N_{{FF}}=${}, $N_{{FB}}=${}'.format(N_bf, M_bf) + '\n' +
+               'MSE={} dB'.format(round(mse_dl_bf,2))) 
+    plt.subplot(2, 2, 3)
+    plt.scatter(np.real(d_hat_dl_taps), np.imag(d_hat_dl_taps), marker='x', color='orange', alpha=0.5)
+    plt.axis('square')
+    plt.axis([-2, 2, -2, 2])
+    plt.xticks([],[])
+    plt.yticks([],[])
+    plt.xlabel("In-Phase")
+    plt.ylabel("Quadrature")
+    plt.title(r'DL BF, $N_{{FF}}=${}, $N_{{FB}}=${}'.format(N_nobf, M_nobf) + '\n' +
+               'MSE={} dB'.format(round(mse_dl_bf_sametaps,2))) 
+    
 
+    """
     # s(theta)
     est_deg = np.load('data/ul/ang_est.npy')
     est_deg = np.reshape(est_deg, (-1,1))
@@ -179,7 +240,7 @@ if __name__ == "__main__":
     N_theta = 200
     deg_theta = np.linspace(theta_start,theta_end,N_theta)
     deg_ax = deg_theta
-    true_angle = [15]
+    true_angle = [-15]
     plt.figure()
     plt.plot(deg_ax,S_theta)
     for i in range(est_deg.size):
@@ -200,6 +261,6 @@ if __name__ == "__main__":
     print("MSE DL No BF:", mse_dl_nobf)
     print("MSE DL BF:", mse_dl_bf)
     print("MSE DL BF Less Taps:", mse_dl_bf_sametaps)
-
+    """
     plt.show() 
 
