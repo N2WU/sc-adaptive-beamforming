@@ -87,12 +87,12 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
         r = r_multi #[:,:M]
         M = int(n_rx)
         r_fft = np.fft.fft(r, axis=0)
-        freqs = np.fft.fftfreq(len(r[:, 0]), 1/fs) # this is the same as 1/Fs with no adjustment
-        freqs = freqs*Fs/fs
+        freqs = np.fft.fftfreq(len(r[:, 0]), 1/Fs) # this is the same as 1/Fs with no adjustment
+        #freqs = freqs*Fs/fs
 
         index = np.where((freqs >= fc-R/2) & (freqs < fc+R/2))[0]
         N = len(index) #uhh???
-        W_out = np.ones((n_rx,N),dtype=complex)
+        #W_out = np.ones((n_rx,N),dtype=complex)
         fk = freqs[index]       
         yk = r_fft[index, :]    # N*M
         theta_start = -45
@@ -110,7 +110,7 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
             d_tau = np.sin(theta) * d0/c
 
             S_M = np.exp(-2j * np.pi * d_tau * np.dot(fk.reshape(N, 1), np.arange(M).reshape(1, M)))    # N*M
-            SMxYk = np.einsum('ij,ji->i', S_M.conj(), yk.T)
+            SMxYk = np.einsum('ij,ji->i', S_M.conj(), yk.T, dtype='complex128')
             #SMxYk = np.sum(S_M.conj)
             klen = len(SMxYk)
             for i in range(n_rx):
@@ -130,20 +130,24 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
         print(theta_m/np.pi*180)
         ang_est = np.rad2deg(theta_list[np.argmax(S_theta)])
         y_tilde = np.zeros((N,n_path), dtype=complex)
+        Sk = np.zeros((n_rx,n_path), dtype=complex)
         for k in range(N):
-            d_tau_m = np.sin(theta_m) * d0/c
-            try:
-                d_tau_new = d_tau_m.reshape(1, n_path)
-            except:
-                d_tau_new = np.append(d_tau_m, [0])
-                d_tau_new = d_tau_new.reshape(1, n_path)
-            Sk = np.exp(-2j * np.pi * fk[k] * np.arange(M).reshape(M, 1) @ d_tau_new)
+            for p in range(n_path):
+                d_tau_p = np.sin(theta_m[p])*d0/c
+                Sk[:,p] = np.exp(-2j * np.pi * fk[k] * np.arange(M)*d_tau_p)
+            #d_tau_m = np.sin(theta_m) * d0/c
+            #try:
+            #    d_tau_new = d_tau_m.reshape(1, n_path)
+            #except:
+            #    d_tau_new = np.append(d_tau_m, [0])
+            #    d_tau_new = d_tau_new.reshape(1, n_path)
+            #Sk = np.exp(-2j * np.pi * fk[k] * np.arange(M).reshape(M, 1) @ d_tau_new)
             for i in range(n_path):
-                e_pu = np.zeros((n_path,1))
-                e_pu[i, 0] = 1
+                e_pu = np.zeros(n_path)
+                e_pu[i] = 1
                 wk = Sk @ np.linalg.inv(Sk.conj().T @ Sk) @ e_pu
-                if i==1:
-                    W_out[:,k] = wk.flatten()
+                #if i==1:
+                    #W_out[:,k] = wk.flatten()
                 y_tilde[k, i] = wk.conj().T @ yk[k, :].T
 
         y_fft = np.zeros((len(r[:, 0]), n_path), complex)
@@ -178,23 +182,22 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
         vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs) #Fs
         v = sg.resample_poly(vr,1,Fs/fs)
         #v = sg.resample_poly(vr,1,4)
-        vp = v[:len(up)+Nz*Ns]
+        
+        if bf==1:
+            if np.var(v) > 1e-6:
+                v /= np.sqrt(np.var(v))
+            else:
+                v = np.zeros_like(v)
         if i==0:
+            vp = v[:len(up)+Nz*Ns] #maybe this gets messed up on bf
             delval,xvals = fdel(vp,up)
-        vp1 = vp[delval:delval+len(up)]
-        lendiff = len(up)-len(vp1)
-        if lendiff > 0:
-            vp1 = np.append(vp1, np.zeros(lendiff))
-        #fde,_,_ = fdop(vp1,up,fs,12)
-        #v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
-        #v = sg.resample_poly(v,np.rint(10**4),np.rint((1/(1+fde/fc))*(10**4)))
-        # in other versions, this is filtered...?
+
         v = v[delval:delval+len(u)]
         v = v[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
         v = sg.resample_poly(v,2,Ns)
         v = np.concatenate((v,np.zeros(Nplus*2)))
         if i == 0:
-            v_multichannel = v
+            v_multichannel = np.copy(v)
             lenvm = len(v)
         else:
             lendiff = lenvm - len(v)
@@ -273,7 +276,7 @@ def dec4psk(x):
     d = d/np.sqrt(2)
     return d
 
-def dfe_matlab(vk, d, N, Nd, M): 
+def dfe_matlab(vk, d_rls, N, Nd, M): 
     K = len(vk[:,0]) # maximum
     Ns = 2
     #N = int(6 * Ns)
@@ -289,6 +292,7 @@ def dfe_matlab(vk, d, N, Nd, M):
     Nplus = 6
 
     v = np.copy(vk)
+    d = np.copy(d_rls)
 
     f = np.zeros((Nd,K),dtype=complex)
     
@@ -320,11 +324,17 @@ def dfe_matlab(vk, d, N, Nd, M):
         #print(psum)
 
         q = np.inner(d_tilde, b.conj())
+        # d_backward
         d_hat[n] = psum - q
 
         if n > Nt:
             d[n] = dec4psk(d_hat[n])
 
+        #if n>Nt:
+            #d_tilde[n] = dec4psk(d_hat[n])
+        #else:
+            #d_tilde[n] = d[n]
+        
         e = d[n]- d_hat[n]
         et[n] = np.abs(e ** 2)
 
@@ -345,9 +355,10 @@ def dfe_matlab(vk, d, N, Nd, M):
         P = P / L - np.matmul(np.outer(k, y.conj()), P) / L
 
         a = c[:int(K*N)]
-        b = -c[int(K*N):int(K*N+M)]
-        d_tilde = np.append(d[n], d_tilde)
-        d_tilde = d_tilde[:M]
+        #b = -c[int(K*N):int(K*N+M)]
+        b = -c[-M:]
+        #d_tilde = np.append(d[n], d_tilde)
+        #d_tilde = d_tilde[:M]
 
     mse = 10 * np.log10(
         np.mean(np.abs(d[Nt : -1 ] - d_hat[Nt : -1]) ** 2)
