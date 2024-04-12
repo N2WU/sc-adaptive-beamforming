@@ -54,10 +54,10 @@ def pwr(x):
     return p
 
 def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
-    reflection_list = np.asarray([1,1]) # reflection gains
+    reflection_list = np.asarray([1,0.5]) # reflection gains
     n_path = len(reflection_list)  
     x_tx_list = np.array([5,-5]) 
-    y_tx_list = np.array([20,20])
+    y_tx_list = np.array([15,15])
     c = 343
     x_rx = d0 + d0 * np.arange(n_rx) #starting on origin
     # x_rx = x_rx # - d0*n_rx/2 #center on origin
@@ -68,6 +68,7 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
     s = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs)) #Fs
     a = 1/c
     r_multi = np.random.randn(int(2*len(s)), n_rx) / snr
+    delays = np.zeros((len(reflection_list),n_rx))
     for i in range(len(reflection_list)):
         x_tx, y_tx = x_tx_list[i], y_tx_list[i]
         reflection = reflection_list[i] #delay and sum not scale
@@ -77,6 +78,10 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
         delta_tau = d_rx_tx / c
         #delta_tau = el_spacing/c * np.sin(np.deg2rad(true_angle))
         delay = np.round(delta_tau * Fs).astype(int) # sample delay, grrrr
+        delay =(i*100 + delay).astype(int)
+        #for m in range(n_rx):
+        #    delay[m] = (5*m + delay[m]).astype(int)
+        delays[i,:] = delay
         for j, delay_j in enumerate(delay):
             r_multi[delay_j:delay_j+len(s), j] += reflection * s
     peaks_rx = 0
@@ -171,24 +176,19 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
         """
     elif bf ==0:
         ang_est = 0
-    delvals = np.zeros((n_rx,1024))
-    
+    xvals = np.zeros((len(r_multi[0,:]),1024), dtype=complex)
+    #for i in range(len(r_multi[0,:])):
+    #    plt.plot(np.real(r_multi[:,i]))
+    #plt.show()
     for i in range(len(r_multi[0,:])):
         r = np.squeeze(r_multi[:, i])
         vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs) #Fs
         v = sg.resample_poly(vr,1,Fs/fs)
         #v = sg.resample_poly(vr,1,4)
         vp = v[:len(up)+Nz*Ns]
-        if i==0:
-            delval,xvals = fdel(vp,up)
-        vp1 = vp[delval:delval+len(up)]
-        lendiff = len(up)-len(vp1)
-        if lendiff > 0:
-            vp1 = np.append(vp1, np.zeros(lendiff))
-        #fde,_,_ = fdop(vp1,up,fs,12)
-        #v = v*np.exp(-1j*2*np.pi*np.arange(len(v))*fde*Ts)
-        #v = sg.resample_poly(v,np.rint(10**4),np.rint((1/(1+fde/fc))*(10**4)))
-        # in other versions, this is filtered...?
+        #if i==0: #& bf == 1:
+        delval,xval = fdel(vp,up)
+        xvals[i] = np.abs(xval) #np.abs(xval)/np.amax(np.abs(xval))
         v = v[delval:delval+len(u)]
         v = v[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
         v = sg.resample_poly(v,2,Ns)
@@ -207,6 +207,13 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
             v_multichannel = np.vstack((v_multichannel,v))
             lenvm = len(v_multichannel[0,:])
     vk = np.copy(v_multichannel)
+    for i in range(len(r_multi[0,:])):
+        plt.plot(xvals[i,:])
+    plt.title("Beamformed Cross-Correlation, M=4")
+    plt.legend(["p=0","p=1"])
+    plt.xlabel("Samples")
+    plt.ylabel("Amplitude")
+    plt.show()
     return vk, ang_est, deg_diff
 
 def transmit_dl(v_dl,ang_est,snr,n_rx,el_spacing,R,fc,fs,bfdl):
@@ -375,7 +382,7 @@ if __name__ == "__main__":
     Nso = Ns
     uf = int(fs / R)
 
-    n_rx = 12
+    n_rx = 4
     d_lambda = 0.5 #np.array([0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]) #
     el_spacing = d_lambda*343/fc
     el_spacing = 0.05
@@ -397,8 +404,8 @@ if __name__ == "__main__":
     snr_db = np.array([5, 10, 15, 20]) #, 15])
     mse = np.zeros_like(snr_db)
     mse_dl_bf = np.zeros_like(snr_db)
-    M_nobf = int(10)
-    M_bf = int(5)
+    M_nobf = int(5)
+    M_bf = int(3)
     N_nobf = int(20)
     N_bf = int(12)
 
