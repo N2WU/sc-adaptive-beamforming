@@ -228,17 +228,27 @@ def transmit(v,snr,Fs,fs,fc,n_rx,d0,bf):
 def transmit_dl(v_dl,ang_est,snr,n_rx,el_spacing,R,fc,fs,bfdl):
     vs = sg.resample_poly(v_dl,Fs,fs)
     s_d = np.real(vs*np.exp(1j*2*np.pi*fc*np.arange(len(vs))/Fs))
-    delays = np.rint(Fs * el_spacing/343 * np.sin(np.deg2rad(ang_est))*np.arange(n_rx)).astype(int)
+    delays = el_spacing/343 * np.sin(np.deg2rad(ang_est))*np.arange(n_rx)
     s_tx = np.zeros((n_rx,int(np.amax(delays) + len(s_d))))
+    s_fft = np.fft.fft(s_d)
+    S_tilde = np.zeros((len(s_fft),n_rx),dtype=complex)
     # apply wk here
     if bfdl == 1:
+        theta_span = np.deg2rad(np.linspace(-45,45,200))
+        delay_span = el_spacing/343 * np.sin(theta_span)
+        # form Pk
+        for k in range(len(s_fft)):
+            wk = np.exp(-2j*np.pi*k*np.reshape(delay_span,(-1,1))@np.reshape(np.arange(n_rx),(1,-1)))
+            #wk_tilde
+            #wk = np.exp(-2j*np.pi*k*delays)
+            Pk = np.eye(n_rx) - wk @ np.linalg.inv(wk.conj().T @ wk)@wk.conj().T
+            wk_tilde = np.argmax(Pk@wk)
+            fk = s_fft[k]
+            S_tilde[k,:] = np.exp(-2j*np.pi*k*delays) * s_fft[k]
         for i in range(n_rx):
-            delay = delays[i]
-            s_tx[i,delay:delay+len(s_d)] = s_d
+            s_tx[i,:] = np.real(np.fft.ifft(S_tilde[:,i]))           
     elif bfdl == 0:
-        s_tx = np.zeros((n_rx,len(s_d)))
-        for i in range(n_rx):
-            s_tx[0,:len(s_d)] = s_d # equal power but in one element   
+        s_tx[0,:len(s_d)] = n_rx * s_d # equal power but in one element   
     x_rx = np.array([5])
     y_rx = np.array([20])
     c = 343
@@ -269,9 +279,9 @@ def transmit_dl(v_dl,ang_est,snr,n_rx,el_spacing,R,fc,fs,bfdl):
     vps = v_single[:len(up)+Nz*Ns]
     delvals,_ = fdel(vps,up)
     vp1s = vps[delvals:delvals+len(up)]
-    #fdes,_,_ = fdop(vp1s,up,fs,12)
-    #v_single = v_single*np.exp(-1j*2*np.pi*np.arange(len(v_single))*fdes*Ts)
-    #v_single = sg.resample_poly(v_single,np.rint(10**4),np.rint((1/(1+fdes/fc))*(10**4)))
+    fdes,_,_ = fdop(vp1s,up,fs,12)
+    v_single = v_single*np.exp(-1j*2*np.pi*np.arange(len(v_single))*fdes*Ts)
+    v_single = sg.resample_poly(v_single,np.rint(10**4),np.rint((1/(1+fdes/fc))*(10**4)))
     
     v_single = v_single[delvals:delvals+len(u)]
     v_single = v_single[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
@@ -482,6 +492,7 @@ if __name__ == "__main__":
                 mse[ind] = mse_out
     """
         #if downlink: # ouch
+    """
     for ind in range(len(snr_db)):
         snr = 10**(0.1 * snr_db[ind])      
         vk_nobf, ang_est, deg_diff = transmit(v,snr,Fs,fs,fc,n_rx,d0,0)
@@ -494,6 +505,7 @@ if __name__ == "__main__":
         d_hat_ul_bf, mse = dfe_matlab(vk_bf, d, N_nobf, Nd, M_nobf)
         d_hat_ul_cum_bf[ind,:] = d_hat_ul_bf
         mse_ul_bf[ind] = mse
+    """
     for ind in range(len(snr_db)):
         snr = 10**(0.1 * snr_db[ind])    
         vk_bf_taps, ang_est, deg_diff = transmit(v,snr,Fs,fs,fc,n_rx,d0,1)
@@ -531,7 +543,7 @@ if __name__ == "__main__":
         plt.title(f'SNR={snr_db[ind]} dB, M={n_rx}, fc={fc}, d0={d0}') #(f'd0={d_lambda[ind]}'r'$\lambda$') 
     """
         #fig1, ax1 = plt.subplots()
-    
+    """
     plt.figure()
     plt.plot(snr_db,mse_ul_nobf,'-o',color='blue')
     plt.plot(snr_db,mse_ul_bf_taps,'-o',color='green' )
@@ -562,6 +574,7 @@ if __name__ == "__main__":
     
     plt.show()
     """
+    
     if downlink:
         #fig1, ax1 = plt.subplots()
         plt.figure()
@@ -593,5 +606,5 @@ if __name__ == "__main__":
             plt.title(r'Downlink, SNR={} dB'.format(snr_db[ind]))
         
         plt.show()
-    """
+    
 
