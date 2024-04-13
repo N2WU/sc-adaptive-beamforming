@@ -238,19 +238,20 @@ def transmit_dl(v_dl,ang_est,snr,n_rx,el_spacing,R,fc,fs,bfdl):
         delay_span = el_spacing/343 * np.sin(theta_span)
         # form Pk
         for k in range(len(s_fft)):
-            wk = np.exp(-2j*np.pi*k*np.reshape(delay_span,(-1,1))@np.reshape(np.arange(n_rx),(1,-1)))
+            #wk = np.exp(-2j*np.pi*k*np.reshape(delay_span,(-1,1))@np.reshape(np.arange(n_rx),(1,-1)))
             #wk_tilde
-            #wk = np.exp(-2j*np.pi*k*delays)
-            Pk = np.eye(n_rx) - wk @ np.linalg.inv(wk.conj().T @ wk)@wk.conj().T
-            wk_tilde = np.argmax(Pk@wk)
             fk = s_fft[k]
-            S_tilde[k,:] = np.exp(-2j*np.pi*k*delays) * s_fft[k]
+            wk = np.exp(-2j*np.pi*fk*delays)
+            Pk = np.eye(n_rx) - wk /(wk.conj().T @ wk) @ wk.conj().T
+            wk_tilde = Pk@wk
+            wk_tilde /= np.linalg.norm(wk_tilde)
+            S_tilde[k,:] = wk_tilde * s_fft[k]
         for i in range(n_rx):
             s_tx[i,:] = np.real(np.fft.ifft(S_tilde[:,i]))           
     elif bfdl == 0:
         s_tx[0,:len(s_d)] = n_rx * s_d # equal power but in one element   
     x_rx = np.array([5])
-    y_rx = np.array([20])
+    y_rx = np.array([15])
     c = 343
     x_d = d0 + d0 * np.arange(n_rx)
     x_refl = d0*np.arange(-n_rx,0)
@@ -279,9 +280,7 @@ def transmit_dl(v_dl,ang_est,snr,n_rx,el_spacing,R,fc,fs,bfdl):
     vps = v_single[:len(up)+Nz*Ns]
     delvals,_ = fdel(vps,up)
     vp1s = vps[delvals:delvals+len(up)]
-    fdes,_,_ = fdop(vp1s,up,fs,12)
-    v_single = v_single*np.exp(-1j*2*np.pi*np.arange(len(v_single))*fdes*Ts)
-    v_single = sg.resample_poly(v_single,np.rint(10**4),np.rint((1/(1+fdes/fc))*(10**4)))
+
     
     v_single = v_single[delvals:delvals+len(u)]
     v_single = v_single[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
@@ -515,19 +514,19 @@ if __name__ == "__main__":
     if downlink:
         for ind in range(len(snr_db)):
             snr = 10**(0.1 * snr_db[ind])      
-            vk_nobf, ang_est, deg_diff = transmit_dl(v_dl,ang_est,snr,n_rx,el_spacing,R,fc,fs,0)
+            vk_nobf = transmit_dl(v_dl,ang_est,snr,n_rx,el_spacing,R,fc,fs,0)
             d_hat_dl_nobf, mse = dfe_matlab(vk_nobf, d, N_nobf, Nd, M_nobf)
             d_hat_dl_cum_nobf[ind,:] = d_hat_dl_nobf
             mse_dl_nobf[ind] = mse
         for ind in range(len(snr_db)):
             snr = 10**(0.1 * snr_db[ind])    
-            vk_bf, ang_est, deg_diff = transmit_dl(v_dl,ang_est,snr,n_rx,el_spacing,R,fc,fs,1)
+            vk_bf = transmit_dl(v_dl,ang_est,snr,n_rx,el_spacing,R,fc,fs,1)
             d_hat_dl_bf, mse = dfe_matlab(vk_bf, d, N_nobf, Nd, M_nobf)
             d_hat_dl_cum_bf[ind,:] = d_hat_dl_bf
             mse_dl_bf[ind] = mse
         for ind in range(len(snr_db)):
             snr = 10**(0.1 * snr_db[ind])    
-            vk_bf_taps, ang_est, deg_diff = transmit_dl(v_dl,ang_est,snr,n_rx,el_spacing,R,fc,fs,1)
+            vk_bf_taps = transmit_dl(v_dl,ang_est,snr,n_rx,el_spacing,R,fc,fs,1)
             d_hat_dl_bf_taps, mse = dfe_matlab(vk_bf_taps, d, N_bf, Nd, M_bf)
             d_hat_dl_cum_bf_taps[ind,:] = d_hat_dl_bf_taps
             mse_dl_bf_taps[ind] = mse
