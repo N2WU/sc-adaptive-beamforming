@@ -234,22 +234,38 @@ def transmit_dl(v_dl,ang_est,snr,n_rx,el_spacing,R,fc,fs,bfdl):
     S_tilde = np.zeros((len(s_fft),n_rx),dtype=complex)
     # apply wk here
     if bfdl == 1:
-        theta_span = np.deg2rad(np.linspace(-45,45,200))
-        delay_span = el_spacing/343 * np.sin(theta_span)
+        ntheta = 2
+        theta_span = np.deg2rad(np.linspace(-45,45,ntheta))
+        theta_span = np.asarray([20, -16])
+        delay_span = el_spacing/343 * np.sin(np.deg2rad(theta_span))
         # form Pk
         for k in range(len(s_fft)):
             #wk = np.exp(-2j*np.pi*k*np.reshape(delay_span,(-1,1))@np.reshape(np.arange(n_rx),(1,-1)))
             #wk_tilde
+            Wk = np.zeros((n_rx,ntheta), dtype=complex)
             fk = s_fft[k]
-            wk = np.exp(-2j*np.pi*fk*delays)
-            Pk = np.eye(n_rx) - wk /(wk.conj().T @ wk) @ wk.conj().T
+            for theta in range(ntheta):
+                #Sk[:,p] = np.exp(-2j * np.pi * fk[k] * np.arange(M)*d_tau_p)
+                #wk = Sk @ np.linalg.inv(Sk.conj().T @ Sk) @ e_pu
+                Wk[:,theta] = 1/np.sqrt(n_rx) * np.exp(-2j*np.pi*k*np.arange(n_rx)*delay_span[theta])
+
+            #Wk = 1/np.sqrt(n_rx) * np.exp(-2j*np.pi*k*np.reshape(delay_span,(-1,1)) * np.reshape(np.arange(n_rx),(1,-1)))
+
+            wk = 1/np.sqrt(n_rx) * np.exp(-2j*np.pi*k*delays)
+            try:
+                Pk = np.eye(n_rx) - Wk @ np.linalg.inv(Wk.conj().T @ Wk) @ Wk.conj().T
+            except:
+                Pk = np.eye(n_rx) - Wk @ Wk.conj().T
+                print("failed")
+            #Pk = np.eye(n_rx) - wk / (wk.conj().T @ wk) @ wk.conj().T
             wk_tilde = Pk@wk
             wk_tilde /= np.linalg.norm(wk_tilde)
             S_tilde[k,:] = wk_tilde * s_fft[k]
         for i in range(n_rx):
             s_tx[i,:] = np.real(np.fft.ifft(S_tilde[:,i]))           
     elif bfdl == 0:
-        s_tx[0,:len(s_d)] = n_rx * s_d # equal power but in one element   
+        for i in range(n_rx):
+            s_tx[i,:len(s_d)] = s_d # equal power but in one element   
     x_rx = np.array([5])
     y_rx = np.array([15])
     c = 343
@@ -260,7 +276,8 @@ def transmit_dl(v_dl,ang_est,snr,n_rx,el_spacing,R,fc,fs,bfdl):
     y_tx_list = np.zeros_like(x_tx_list)
     r_single = np.random.randn(int(2*len(s_tx[0,:]))).astype('complex') / snr
     array_h = np.ones(n_rx)
-    reflection_list = np.append(0.5*array_h, array_h)
+    reflection_list = np.append(0.1*array_h, array_h)
+    delay_list = np.append(np.zeros(int(n_rx)),np.ones(int(n_rx)))
     # make s_tx a reflection
     s_tx_ref = np.zeros((2*n_rx,len(s_tx[0,:])), dtype=complex)
     s_tx_ref[n_rx:,:] = s_tx
@@ -273,14 +290,13 @@ def transmit_dl(v_dl,ang_est,snr,n_rx,el_spacing,R,fc,fs,bfdl):
         delta_tau = d_rx_tx / c
         delay = np.round(delta_tau * Fs).astype(int) # sample delay
         delay = delay[0]
+        #delay =(delay_list[i]*100 + delay).astype(int)
         r_single[delay:delay+len(s_tx[0,:])] += reflection * s_tx_ref[i,:]
     r = np.squeeze(r_single)
     vr = r * np.exp(-1j*2*np.pi*fc*np.arange(len(r))/Fs)
     v_single = sg.resample_poly(vr,1,Fs/fs)
     vps = v_single[:len(up)+Nz*Ns]
-    delvals,_ = fdel(vps,up)
-    vp1s = vps[delvals:delvals+len(up)]
-
+    delvals,xvals = fdel(vps,up)
     
     v_single = v_single[delvals:delvals+len(u)]
     v_single = v_single[lenu+Nz*Ns+trunc*Ns+1:] #assuming above just chops off preamble
@@ -397,7 +413,7 @@ if __name__ == "__main__":
     dp = np.array([1, -1, 1, -1, 1, 1, -1, -1, 1, 1, 1, 1, 1])*(1+1j)/np.sqrt(2)
     fc = 6.5e3
     Fs = 64000
-    fs = Fs/4
+    fs = Fs
     Ts = 1/fs
     alpha = 0.25
     trunc = 4
