@@ -22,7 +22,7 @@ def dfe_matlab(vk, d_dfe, N, Nd, M):
     Kf1 = 0.001
     Kf2 = Kf1/10
     Lf1 = 1
-    L = 0.99
+    L = 0.95
     P = np.eye(int(K*N+M))/delta
     Lbf = 0.99
     Nplus = 6
